@@ -216,3 +216,15 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# AutoSignal-X — data caches and per-run artifacts (large; reproducible from code)
+data/*
+!data/.gitkeep
+reports/runs/
+
+# uv local cache (Windows cross-drive workaround when set as UV_CACHE_DIR)
+.uv-cache/
+
+# Claude Code — local state (allow future shared .claude/settings.json or skills)
+.claude/settings.local.json
+.claude/worktrees/

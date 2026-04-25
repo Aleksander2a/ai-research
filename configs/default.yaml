@@ -1,0 +1,64 @@
+# AutoSignal-X — default experiment config.
+# Override per-experiment via configs/exp_*.yaml. Read by the eval harness
+# (Iter 2+) and by each layer's CLI subcommand.
+
+data:
+  start_date: "2010-01-01"
+  end_date: "2025-12-31"
+  frequency: "1d"
+  assets:
+    - SPY
+    - QQQ
+    - IWM
+    - GLD
+    - TLT
+    - EFA
+    - EEM
+    - HYG
+  macro:
+    - "^TNX"
+    - "^VIX"
+    - "DX-Y.NYB"
+    - "CL=F"
+
+eval:
+  splits:
+    train_end: "2018-12-31"
+    val_end:   "2020-12-31"
+    test_end:  "2025-12-31"
+  forecast_horizon_days: 21
+  rolling_step_days: 21
+  metrics:
+    - mase
+    - mape
+    - directional_accuracy
+    - crps
+
+regime:
+  n_regimes: 4
+  encoder:
+    embedding_dim: 16
+    window_days: 60
+    epochs: 25
+    batch_size: 64
+
+signal:
+  top_k: 8
+  candidate_features:
+    - rolling_mean_5
+    - rolling_mean_20
+    - rolling_std_20
+    - momentum_10
+    - rsi_14
+    - macd_signal
+    - macro_lag_1
+    - macro_lag_5
+
+graph:
+  partial_corr_alpha: 0.05
+  granger_max_lag: 5
+
+agent:
+  max_rounds: 5
+  temperature: 0.0
+  seed: 42
