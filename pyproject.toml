@@ -27,6 +27,7 @@ dependencies = [
     "chronos-forecasting>=1.5",
     "scikit-learn>=1.4",
     "hmmlearn>=0.3",
+    "networkx>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -61,6 +62,7 @@ ignore = ["E501"]
 "src/autosignalx/signal/*" = ["N803", "N806"]
 "src/autosignalx/regime/*" = ["N803", "N806"]
 "src/autosignalx/forecast/*" = ["N803", "N806"]
+"src/autosignalx/graph/*" = ["N803", "N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
