@@ -668,6 +668,56 @@ def render_trace_quality_chart() -> None:
     )
 
 
+def render_sessions() -> None:
+    st.title("Sessions")
+    st.caption(
+        "Multi-session view. Each row aggregates ledger, findings, "
+        "telemetry, and trace-quality records by session_id. Sorted "
+        "chronologically (session IDs are YYYYMMDD-prefixed)."
+    )
+
+    from autosignalx.agent import sessions as sessions_mod
+
+    df = sessions_mod.all_summaries()
+    if df.empty:
+        st.info(
+            "No sessions yet. Run `make agent` (or schedule daily runs via "
+            "`scripts/run_session.sh`) to populate."
+        )
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("Sessions", len(df))
+    cols[1].metric("Total findings", int(df["n_findings"].sum()))
+    cols[2].metric("Total cost (USD)", f"${df['cost_usd'].sum():.4f}")
+    finds = df["n_findings"].sum()
+    cost = df["cost_usd"].sum()
+    cols[3].metric("Cost per finding", f"${cost / finds:.4f}" if finds > 0 else "n/a")
+
+    st.divider()
+    st.subheader("Per-session summary")
+    st.dataframe(
+        df.style.format(
+            {
+                "cost_usd": "${:.4f}",
+                "total_tokens": "{:,}",
+                "latency_total_ms": "{:,.0f}",
+                "promotion_rate": "{:.1%}",
+                "cost_per_finding": "${:.4f}",
+                "avg_clarity": "{:.2f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Productivity trend (cumulative)")
+    trend = sessions_mod.productivity_trend()
+    if not trend.empty:
+        chart_df = trend[["session_id", "cum_findings", "cum_cost_usd"]].set_index("session_id")
+        st.line_chart(chart_df, height=260)
+
+
 def render_telemetry() -> None:
     st.title("Telemetry")
     st.caption(
@@ -924,6 +974,7 @@ PANELS = {
     "Lineage": render_lineage,
     "Lessons & Memory": render_lessons,
     "Telemetry": render_telemetry,
+    "Sessions": render_sessions,
     "Ask the Memory": render_ask_the_memory,
 }
 

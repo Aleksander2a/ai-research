@@ -1,4 +1,4 @@
-.PHONY: help sync test lint format demo clean data baseline forecast regime signal graph agent
+.PHONY: help sync test lint format demo clean data baseline forecast regime signal graph agent scheduled-session
 
 help:
 	@echo "AutoSignal-X — modular research instrument for predictive structure discovery"
@@ -55,6 +55,9 @@ graph:
 
 agent:
 	uv run autosignalx agent run --fresh
+
+scheduled-session:
+	bash scripts/run_session.sh
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache htmlcov .coverage

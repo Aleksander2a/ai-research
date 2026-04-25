@@ -56,7 +56,7 @@ def make_propose_node(provider: LLMProvider):
         h = _safe_parse_json(raw)
         if not h:
             h = {"hypothesis": "(parse failed)", "experiment": {}, "raw": raw[:500]}
-        entry = {"round": rd, "step": "propose", "content": h}
+        entry = {"round": rd, "step": "propose", "content": h, "session_id": state.get("session_id")}
         ledger.append(entry)
         state["current_hypothesis"] = h
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -119,7 +119,7 @@ def experiment_node(state: AgentState) -> AgentState:
             )
             result["promoted_finding_id"] = finding.get("id")
 
-    entry = {"round": rd, "step": "experiment", "content": result}
+    entry = {"round": rd, "step": "experiment", "content": result, "session_id": state.get("session_id")}
     ledger.append(entry)
     state["current_experiment"] = result
     state["ledger"] = state.get("ledger", []) + [entry]
@@ -133,7 +133,7 @@ def make_critique_node(provider: LLMProvider):
         exp = state.get("current_experiment") or {}
         msgs = prompts.critic_messages(h, exp)
         raw = provider.chat(msgs, step="critique", round=rd)
-        entry = {"round": rd, "step": "critique", "content": raw.strip()}
+        entry = {"round": rd, "step": "critique", "content": raw.strip(), "session_id": state.get("session_id")}
         ledger.append(entry)
         state["current_critique"] = raw.strip()
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -147,7 +147,7 @@ def make_decide_node(provider: LLMProvider):
         rd = state["round"]
         max_rounds = state.get("max_rounds", 5)
         if rd + 1 >= max_rounds:
-            entry = {"round": rd, "step": "decide", "content": {"action": "stop", "reason": "max_rounds reached"}}
+            entry = {"round": rd, "step": "decide", "content": {"action": "stop", "reason": "max_rounds reached"}, "session_id": state.get("session_id")}
             state["next_action"] = "stop"
         else:
             ledger_summary = ledger.summarize_for_prompt(state.get("ledger", []))
@@ -157,7 +157,7 @@ def make_decide_node(provider: LLMProvider):
             action = str(decision.get("action", "continue"))
             if action not in {"continue", "stop"}:
                 action = "continue"
-            entry = {"round": rd, "step": "decide", "content": decision or {"action": action}}
+            entry = {"round": rd, "step": "decide", "content": decision or {"action": action}, "session_id": state.get("session_id")}
             state["next_action"] = action
         ledger.append(entry)
         state["ledger"] = state.get("ledger", []) + [entry]
