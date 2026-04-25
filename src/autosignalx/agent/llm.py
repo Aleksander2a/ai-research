@@ -96,10 +96,13 @@ class LiveProvider:
         ).hexdigest()[:24]
 
     def chat(self, messages: list[dict[str, str]], step: str, round: int) -> str:
+        from autosignalx.agent import telemetry as telemetry_mod
+
         key = self._cache_key(messages)
         cache_file = self.cache_dir / f"{key}.txt"
         if cache_file.exists():
             content = cache_file.read_text(encoding="utf-8")
+            # Cached -- no live call, no telemetry record
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -110,9 +113,42 @@ class LiveProvider:
                     lc_messages.append(SystemMessage(content=m["content"]))
                 else:
                     lc_messages.append(HumanMessage(content=m["content"]))
-            response = self.client.invoke(lc_messages)
+            with telemetry_mod.CallTimer() as timer:
+                response = self.client.invoke(lc_messages)
             content = response.content if isinstance(response.content, str) else str(response.content)
             cache_file.write_text(content, encoding="utf-8")
+            # Mine token usage from response.response_metadata when available;
+            # fall back to a rough character-count estimate.
+            usage = (getattr(response, "response_metadata", {}) or {}).get(
+                "token_usage", {}
+            ) or (getattr(response, "usage_metadata", {}) or {})
+            prompt_tokens = int(
+                usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+            )
+            completion_tokens = int(
+                usage.get("completion_tokens") or usage.get("output_tokens") or 0
+            )
+            if prompt_tokens == 0:
+                prompt_tokens = max(1, sum(len(m.get("content", "")) for m in messages) // 4)
+            if completion_tokens == 0:
+                completion_tokens = max(1, len(content) // 4)
+            try:
+                model_id = (
+                    self.client.model_name
+                    if hasattr(self.client, "model_name")
+                    else getattr(self.client, "model", "unknown")
+                )
+            except Exception:  # noqa: BLE001
+                model_id = "unknown"
+            telemetry_mod.record_call(
+                model=str(model_id),
+                role="unknown",  # role not threaded yet; future iter
+                step=step,
+                round_n=round,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=timer.elapsed_ms,
+            )
 
         if self.record_path is not None:
             self.record_path.parent.mkdir(parents=True, exist_ok=True)

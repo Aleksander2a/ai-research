@@ -867,3 +867,49 @@ Without consolidation, sessions are independent. With it, the agent's productivi
 - `consolidate_and_append` persists to disk and the file contains the section.
 
 Suite total: 122 passing.
+
+---
+
+## Iter 17 — Cost, latency, token telemetry
+
+Autonomy with observability — Deeter's exact phrasing. Iter 17 instruments every live LLM call with `(model, prompt_tokens, completion_tokens, cost_usd, latency_ms, session_id)`, persists to `reports/agent/telemetry.jsonl`, and renders a Telemetry panel in the cockpit. Cached and replay-mode calls don't record (they're free), so the dashboard shows the real operational footprint.
+
+### Implementation
+
+`agent/telemetry.py`:
+
+- **`DEFAULT_PRICES`** — per-model `(USD per 1M input tokens, USD per 1M output tokens)` for the DeepInfra models we use; override per-model via `DEEPINFRA_PRICE_<MODEL>_IN` / `_OUT` env vars.
+- **`estimate_cost_usd(model_id, prompt_tokens, completion_tokens)`** — looks up the rate (env > defaults > conservative fallback `(0.50, 2.00)`).
+- **`record_call(model, role, step, round, prompt_tokens, completion_tokens, latency_ms, session_id)`** — appends one record to `telemetry.jsonl`.
+- **`CallTimer`** — context manager that measures wall-clock latency.
+- **`load()`** / **`clear()`** — round-trip the persisted store.
+
+`agent/llm.py` LiveProvider.chat is instrumented:
+
+- Wrap `client.invoke(...)` with `CallTimer`.
+- Mine `response.response_metadata.token_usage` (or `usage_metadata`) for token counts.
+- Fall back to a character-count estimate (~4 chars per token) when the provider doesn't return usage metadata.
+- Call `telemetry.record_call(...)` after each live (non-cached) call.
+
+The Iter 7 disk cache means re-runs don't generate telemetry — only the **first** call for a given prompt-hash counts. The dashboard reflects the marginal cost of new agent work.
+
+### Cockpit
+
+New **"Telemetry"** panel between Lessons & Memory and Ask the Memory:
+
+- Four headline metrics: total calls, total cost (USD), total tokens, median latency.
+- **Per-model breakdown**: calls, tokens, cost, p50/p95 latency, sorted by cost descending.
+- **Per-step breakdown**: which agent steps (theorist / skeptic / adjudicator / consolidate / trace_eval / ...) consume most of the budget.
+- **Cumulative cost over time**: a single-line chart showing how the session's spend grew.
+
+The headline metric for the WOW demo (Iter 19) becomes "**$X.XX of compute → Y promoted findings**" — a concrete operational ROI number.
+
+### Tests (5 new)
+
+- Cost estimate matches the rate table for known models.
+- Unknown models use the conservative fallback.
+- Env-var price override wins over defaults.
+- `record_call` persists with the right fields and survives the JSONL round-trip.
+- `CallTimer` measures elapsed time correctly.
+
+Suite total: 127 passing.

@@ -25,6 +25,7 @@ from autosignalx.agent import (  # noqa: F401
     prompts,
     specs,
     state,
+    telemetry,
     tools,
     trace_eval,
 )
