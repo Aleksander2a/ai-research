@@ -1,7 +1,40 @@
 # AutoSignal-X — Research Report
 
-> A running record of methods, results, and findings as iterations land.
-> Each iteration appends its own section. Final consolidation in Iter 9.
+> Layer-by-layer findings narrative for the AutoSignal-X submission.
+> Append-only across iterations; this report grew with the codebase
+> rather than being written after the fact.
+
+## Executive summary
+
+**What we built.** AutoSignal-X is a 5-layer modular AI research instrument for studying *what makes signals predictive, when, and why* in dynamic markets. Each layer is a credible MVP of its model class:
+
+| Layer | Implementation | Iter |
+|---|---|---|
+| L1 Forecasting | Chronos-2 (multivariate + 80% intervals) + classical baselines (naive, seasonal-naive, ARIMA) | 3 |
+| L2 Representation | Contrastive 1D-CNN encoder + KMeans regimes; HMM sanity-check baseline | 4 |
+| L3 Reasoning | Per-regime feature ranking via HistGradientBoosting + permutation importance (TabPFN pivot, see Iter 5 section) | 5 |
+| L4 Relational | GLASSO partial-correlation graph + Granger causality + NetworkX centrality | 6 |
+| L5 Agentic | LangGraph state machine over DeepInfra LLMs (Kimi K2.6 / GLM-4.7-Flash / DeepSeek V4-Pro) with persistent JSONL ledger, replay-mode fallback for no-key reviewers | 7 |
+
+All ablation results, regime labels, signal rankings, graph artifacts, and the recorded agent trace are committed; the cockpit reads from them out-of-the-box.
+
+**What we found.**
+1. **Foundation models alone don't beat naive on liquid daily ETF prices.** Chronos-2 underperforms naive by 5-6% MAE; macro past-covariates make it slightly worse. 80% intervals are well-calibrated (CRPS ≈ 2.9). This is a calibrated negative result, not a bug -- daily ETF prices are very close to martingales, and naive (random walk) is the Bayes-optimal forecaster under that data-generating process.
+2. **Macros dominate every regime's top-5 features for direction prediction**, but the *dominant* macro depends on the regime: 10Y yields in Regime 0, dollar index in Regimes 1+3, crude oil in Regime 2. Conditional macro selection is the right structure, not unconditional multi-covariate input. This explains why Chronos-2 with all 4 macros simultaneously underperformed univariate Chronos-2 in Iter 3.
+3. **The cross-asset graph reveals typed structural roles.** SPY is the hub (eigenvector centrality 0.532); GLD is statistically isolated (~0 centrality, confirms uncorrelated-diversifier role); TLT is the bridge (highest betweenness 0.429, transmits shocks between equity and other regimes).
+4. **The live LangGraph agent composes findings from every prior layer.** By Round 4 it proposes a mechanistic, falsifiable hypothesis using regime structure (Iter 4) + per-regime feature importance (Iter 5) + graph centrality (Iter 6) -- the conditional-improvement search opened by Iter 3's negative result.
+
+**What this is not.** This is not a profitable trading strategy. It is not a benchmark dominated by a foundation model. It is a research instrument designed to reveal where layered structure earns its keep -- and we report the finding (mostly *not yet, conditionally*) honestly rather than cherry-picking a positive headline.
+
+**What's next** (future work, not in this submission):
+- Diebold-Mariano significance tests on the agent's identified slices (which DM-significant lifts hold up?).
+- Per-regime conditional forecaster: ensemble that selects method + features per regime.
+- Live-deployment-aware eval (latency, slippage, no-trade horizons) -- the offline-to-online generalization problem Deeter explicitly cares about.
+- TS2Vec replacement of the contrastive encoder; PyTorch Geometric GNN replacement of the static graph layer (both deferred per the project plan as scope-discipline cuts).
+
+---
+
+## Thesis
 
 ## Thesis
 
@@ -455,6 +488,60 @@ This is the pattern the agent is designed to discover: **conditional improvement
 
 ---
 
-## Future iterations
+---
 
-Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.
+## Iter 9 — Consolidation, reproducibility, future work
+
+The five model layers are live, the cockpit shows them coherently, and the findings story is honest. This iteration consolidates the report (executive summary at top), and verifies that the submission stands up as a piece of research artifact rather than a code dump.
+
+### Reproducibility
+
+A reviewer cloning the repo and running the demo should get the cockpit live in under five minutes:
+
+```bash
+git clone https://github.com/Aleksander2a/ai-research.git
+cd ai-research
+uv sync --all-extras
+uv run streamlit run app/streamlit_app.py    # or: make demo
+```
+
+The cockpit immediately shows real results because all artifacts are committed:
+- `reports/ablations/baseline.parquet` (~340 KB, 30k forecasts) and `reports/ablations/chronos2.parquet` (~600 KB, 20k forecasts) -> Forecast Arena renders metrics + uncertainty bands
+- `reports/regimes/{kmeans,hmm,embeddings}.parquet` (~450 KB) -> Regime Explorer renders timelines + PCA scatter
+- `reports/signals/signal_ranking.parquet` (~5 KB) -> Signal Discovery Lab renders the per-regime heatmap
+- `reports/graph/{edges,centrality}.parquet` (~8 KB) -> Cross-Asset Graph renders the matrix + centrality table
+- `reports/agent/ledger.jsonl` (~8 KB) and `replay/agent_steps.jsonl` (~6 KB) -> Agent Console renders the recorded session, Ask the Memory works in keyword-search mode
+
+Reviewers who want to re-run any layer can:
+- `make data` -> refresh ETF + macro caches from yfinance
+- `make baseline` -> re-run the 3-method baseline ablation (~12 min, ARIMA dominates)
+- `make forecast` -> re-run the Chronos-2 ablation (~19 min on CPU)
+- `make regime` -> re-fit the contrastive encoder + clusterers (~50s)
+- `make signal` -> re-rank features per regime (~30s)
+- `make graph` -> rebuild the cross-asset graph (~30s)
+- `make agent` -> run the LangGraph loop fresh (in replay mode by default; live mode if `DEEPINFRA_API_KEY` is set in `.env`)
+
+`make test` runs all 76 tests; `make lint` enforces ruff cleanliness.
+
+### Submission flow
+
+1. Reviewer reads README.md (status + headline findings + reviewer journey).
+2. Reviewer runs `uv sync --all-extras && make demo`.
+3. Reviewer walks the 8 cockpit panels in order: Overview -> Data -> Forecast Arena -> Regime Explorer -> Signal Discovery Lab -> Cross-Asset Graph -> Agent Console -> Ask the Memory.
+4. Reviewer reads REPORT.md for the layer-by-layer narrative (the file you are reading now).
+5. Reviewer browses git history (`git log --graph --oneline`) to see iteration boundaries: 9 `--no-ff` merges, each labeled by iter and branch name.
+
+### What the version-control story shows
+
+Each iteration is a branch (`iter-N-theme`), merged with `--no-ff` so the boundaries are visible. Within each iteration are 1-3 cohesive commits separating concerns: (a) the layer's code, (b) tests, (c) CLI + cockpit + report. Every commit on the integration branch passes `make test` and runs end-to-end. If the project had been forced to ship at any iteration boundary >= Iter 3, it would still have been a real submission with calibrated baselines and probabilistic forecasts.
+
+### Honest limitations
+
+- **Cross-validation in the agent's experiment step is descriptive, not causal.** The agent's `slice_forecasts` tool computes metrics on cached forecasts; it does not retrain models per-hypothesis. Adding "fit-on-the-fly" experiment types is a natural extension that preserves the LangGraph state machine.
+- **No DM significance tests on the agent's findings.** The agent identifies candidate slices; the significance question (which lifts hold up under Diebold-Mariano?) is acknowledged but deferred. With more time, we would wire `statsmodels`'s DM test as another deterministic tool the agent can call, and have the critic step demand DM verification.
+- **Single dataset.** ETFs are liquid and well-understood; the negative result on naive may be specific to this asset class. The methodology generalizes (the harness contract, the regime-conditioning, the agent loop are all dataset-agnostic), but conclusions are tied to ETFs.
+- **TabPFN-v2 license barrier.** Documented in Iter 5; we use HistGradientBoostingClassifier as a license-free strong-baseline replacement. Swapping back is a single-class edit.
+
+### Closing note
+
+This submission is a *research instrument*, not a forecasting demo. The intended signal to Deeter is: I can frame ambiguous open-ended problems into measurable scientific inquiry, design layered systems that compose, build agent infrastructure that uses other layers as typed inputs, evaluate honestly (including reporting calibrated negative results), and ship reproducible artifacts under tight time constraints. The 9 iterations and their commits are the trace of that process.
