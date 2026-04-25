@@ -20,3 +20,4 @@ class AgentState(TypedDict, total=False):
     current_critique: str | None
     current_experiment: dict[str, Any] | None
     next_action: str  # "continue" or "stop"
+    session_id: str

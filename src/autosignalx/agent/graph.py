@@ -78,6 +78,34 @@ def experiment_node(state: AgentState) -> AgentState:
             asset=params.get("asset"),
             regime_id=params.get("regime_id"),
         )
+        # Auto-promotion attempt: if the hypothesis names a method, run the
+        # significance gate against naive on the same slice and persist a
+        # finding when it passes.
+        method = params.get("method")
+        if method and method != "naive":
+            sig = tools.test_significance(
+                method=method,
+                asset=params.get("asset"),
+                regime_id=params.get("regime_id"),
+            )
+            result["significance"] = sig
+            if sig.get("promotable"):
+                from autosignalx.agent import findings as findings_mod
+
+                finding = findings_mod.promote(
+                    hypothesis=h.get("hypothesis", ""),
+                    method=method,
+                    filters={
+                        "asset": params.get("asset"),
+                        "regime_id": params.get("regime_id"),
+                    },
+                    evidence=sig["evidence"],
+                    agent_confidence="auto-promoted by experiment gate",
+                    round=rd,
+                    session_id=state.get("session_id", "unknown"),
+                    parent_hypothesis_ids=h.get("parent_hypothesis_ids", []),
+                )
+                result["promoted_finding_id"] = finding.get("id")
     else:
         result = {"error": f"unknown experiment type: {exp_type}"}
 
@@ -152,8 +180,14 @@ def build_agent_graph(provider: LLMProvider):
     return graph.compile()
 
 
-def run(max_rounds: int = 5, seed: int = 42, record_replay: bool = False) -> list[dict]:
+def run(
+    max_rounds: int = 5,
+    seed: int = 42,
+    record_replay: bool = False,
+    session_id: str | None = None,
+) -> list[dict]:
     """Top-level entry point. Returns the full ledger after the run."""
+    from autosignalx.agent.findings import make_session_id
     from autosignalx.agent.llm import get_provider
 
     provider = get_provider(record_replay=record_replay)
@@ -168,6 +202,7 @@ def run(max_rounds: int = 5, seed: int = 42, record_replay: bool = False) -> lis
         "current_critique": None,
         "current_experiment": None,
         "next_action": "continue",
+        "session_id": session_id or make_session_id(),
     }
     final = app.invoke(initial, {"recursion_limit": max_rounds * 6 + 4})
     return final.get("ledger", [])
