@@ -611,3 +611,61 @@ The agent's raw ledger (`reports/agent/ledger.jsonl`) records every step it take
 **Tests** (3 new): round-trip of a single finding; idempotent re-promotion bumps replication count; session IDs are unique. Suite total: 88 passing.
 
 This is where the agent's "discoveries" finally have a home that's separate from its "work."
+
+---
+
+## Iter 12 — Multi-agent debate (Theorist / Skeptic / Adjudicator)
+
+The single-LLM `propose → critique → decide` loop becomes a structured **debate** where three role-specialized agents argue, each backed by a different DeepInfra model. The interplay surfaces *dialectic*, not monologue, and gives the cockpit a much richer trace to render.
+
+### Roles and models
+
+| Role | Default model | System prompt |
+|---|---|---|
+| **Theorist** | `moonshotai/Kimi-K2.6` (creative) | "Propose one specific, mechanistically-motivated hypothesis. Lean into novel (regime, asset, method) combinations." |
+| **Skeptic** | `zai-org/GLM-5.1` (critical) | "In 2-4 sentences, identify the strongest CONFOUNDER, alternative explanation, or methodological weakness." |
+| **Adjudicator** | `deepseek-ai/DeepSeek-V4-Pro` (decisive) | "Weigh the Theorist's proposal vs the Skeptic's challenge against the experiment result. Verdict: support / refute / inconclusive." |
+
+Per-role models are configurable via `DEEPINFRA_MODEL_THEORIST` / `_SKEPTIC` / `_ADJUDICATOR` env vars; they fall back through `_PROPOSER` / `_CRITIC` / `_CHAT` to the project defaults.
+
+### Round structure (debate mode)
+
+```
+START → Theorist (proposes JSON hypothesis)
+      → Skeptic (challenges before experiment runs)
+      → experiment (deterministic slice + auto-promotion gate from Iter 11)
+      → Adjudicator (judges results, decides continue/stop)
+      → [theorist | END]
+```
+
+The Skeptic challenges *before* the experiment runs, so its critique is independent of the result — this guards against post-hoc rationalization. The Adjudicator only sees the experiment result and renders a verdict ending in `VERDICT: support / refute / inconclusive`.
+
+### Implementation
+
+`agent/debate.py`:
+
+- **`make_theorist_node(record_replay)`**, **`make_skeptic_node(...)`**, **`make_adjudicator_node(...)`** — node-factory pattern; each binds a role-specific provider (different model) and writes its own ledger entries (steps `theorist` / `skeptic` / `adjudicator`).
+- **`build_debate_agent_graph(record_replay)`** — compiles the LangGraph state machine with the new four-node-per-round structure.
+- **`run_debate(max_rounds, seed, record_replay, session_id)`** — top-level entry, mirrors `graph.run` but invokes the debate graph.
+
+`agent/llm.py`:
+
+- New **`ROLE_TO_ENV`** mapping role → env var.
+- New **`_model_for_role(role)`** with the env-var hierarchy fallback.
+- **`get_provider(record_replay, role)`** now takes a role and selects the correct model per role.
+
+### CLI
+
+`autosignalx agent run --mode debate --max-rounds 5 --fresh` runs the debate flow. The default mode is still `single` (backward compatible with the Iter 7 loop). Both modes write to the same ledger; the cockpit renders both transparently.
+
+### Cockpit
+
+The Agent Console panel learns the new step types and renders each role with its own icon (💡 Theorist, 🔍 Skeptic, ⚖️ Adjudicator, 🧪 experiment, 🎯 decide). When an experiment auto-promotes a finding (Iter 11 gate), the entry is marked with a green ✓ banner and the finding ID, so reviewers can jump straight to the Findings panel.
+
+### What this gives us
+
+- **Three different reasoning styles** in one round, surfacing perspectives that a single-LLM loop misses.
+- **Adversarial critique applied before** the experiment, raising the bar for hypotheses to even be tested.
+- **A richer trace** for the cockpit and the WOW demo (Iter 19): debate-style transcripts read like a real research meeting.
+
+Suite total: 94 passing (6 new for debate node factories + prompt shapes + graph compile).

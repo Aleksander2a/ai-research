@@ -167,22 +167,52 @@ def _fallback_response(step: str, round: int) -> str:
     return ""
 
 
-def get_provider(record_replay: bool = False) -> LLMProvider:
+ROLE_TO_ENV = {
+    "proposer": "DEEPINFRA_MODEL_PROPOSER",
+    "critic": "DEEPINFRA_MODEL_CRITIC",
+    "chat": "DEEPINFRA_MODEL_CHAT",
+    "theorist": "DEEPINFRA_MODEL_THEORIST",
+    "skeptic": "DEEPINFRA_MODEL_SKEPTIC",
+    "adjudicator": "DEEPINFRA_MODEL_ADJUDICATOR",
+}
+
+
+def _model_for_role(role: str) -> str:
+    """Resolve which DeepInfra model to use for a role.
+
+    Falls back through the env var hierarchy: role-specific env >
+    proposer/critic/chat default > a sensible global default."""
+    env_key = ROLE_TO_ENV.get(role, "DEEPINFRA_MODEL_PROPOSER")
+    explicit = os.environ.get(env_key, "").strip()
+    if explicit:
+        return explicit
+    if role in ("theorist", "proposer"):
+        return settings.deepinfra_model_proposer or "moonshotai/Kimi-K2.6"
+    if role in ("skeptic", "critic"):
+        return settings.deepinfra_model_critic or "zai-org/GLM-5.1"
+    if role in ("adjudicator", "chat"):
+        return settings.deepinfra_model_chat or "deepseek-ai/DeepSeek-V4-Pro"
+    return settings.deepinfra_model_proposer or "moonshotai/Kimi-K2.6"
+
+
+def get_provider(record_replay: bool = False, role: str = "proposer") -> LLMProvider:
     """Factory: live DeepInfra if a key is set and replay isn't forced;
     otherwise the deterministic replay provider.
+
+    The ``role`` parameter selects the model via env-var hierarchy
+    (DEEPINFRA_MODEL_<ROLE>), letting different agent roles use different
+    models -- e.g. a creative proposer model for the Theorist, a critical
+    one for the Skeptic, a decisive one for the Adjudicator.
 
     When ``record_replay`` is True and we end up live, every response is
     appended to ``replay/agent_steps.jsonl`` so a future no-key reviewer
     sees the same trace."""
     if settings.use_replay:
         return ReplayProvider()
-    model = settings.deepinfra_model_proposer or os.environ.get(
-        "DEEPINFRA_MODEL_DEFAULT", "openai/gpt-oss-120b"
-    )
     record_path = REPLAY_PATH if record_replay else None
     return LiveProvider(
         api_key=settings.deepinfra_api_key,
-        model=model,
+        model=_model_for_role(role),
         base_url=settings.deepinfra_base_url,
         record_path=record_path,
     )

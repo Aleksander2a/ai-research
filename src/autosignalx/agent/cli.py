@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from autosignalx.agent import debate as debate_mod
 from autosignalx.agent import graph, ledger
 from autosignalx.config import settings
 
@@ -27,6 +28,11 @@ def run_cmd(
     record_replay: bool = typer.Option(
         False, help="Append live LLM responses to replay/agent_steps.jsonl."
     ),
+    mode: str = typer.Option(
+        "single",
+        help="'single' (one LLM does propose/critique/decide) or 'debate' "
+        "(Theorist/Skeptic/Adjudicator multi-role debate per round, Iter 12).",
+    ),
 ) -> None:
     """Run the agent's research loop for ``max_rounds`` rounds.
 
@@ -40,14 +46,19 @@ def run_cmd(
         ledger.clear()
         console.print("Ledger cleared.")
 
-    mode = "replay" if settings.use_replay else "live"
+    runtime_mode = "replay" if settings.use_replay else "live"
     console.print(
         f"Starting agent loop ({max_rounds} rounds, mode={mode}, "
-        f"record_replay={record_replay})..."
+        f"runtime={runtime_mode}, record_replay={record_replay})..."
     )
-    entries = graph.run(
-        max_rounds=max_rounds, seed=seed, record_replay=record_replay
-    )
+    if mode == "debate":
+        entries = debate_mod.run_debate(
+            max_rounds=max_rounds, seed=seed, record_replay=record_replay
+        )
+    else:
+        entries = graph.run(
+            max_rounds=max_rounds, seed=seed, record_replay=record_replay
+        )
     console.print(f"Agent finished. Ledger now has {len(entries)} entries.")
 
     table = Table(title="Agent ledger summary", header_style="bold")
