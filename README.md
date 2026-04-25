@@ -102,6 +102,12 @@ export UV_CACHE_DIR="$PWD/.uv-cache"
 uv sync --all-extras
 ```
 
+## Documentation map
+
+- **README.md** (this file) — project framing, headline findings, reviewer journey, quick start.
+- **[REPORT.md](REPORT.md)** — layer-by-layer findings narrative; executive summary at top, per-iteration sections that grew with the codebase.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — factual implementation reference: data-flow diagram, contracts between layers, per-layer wiring, the agent loop.
+
 ## Repository layout
 
 ```
