@@ -1,0 +1,75 @@
+[project]
+name = "autosignalx"
+version = "0.1.0"
+description = "Modular AI research instrument for discovering predictive structure in dynamic markets"
+readme = "README.md"
+requires-python = ">=3.11,<3.13"
+license = { text = "MIT" }
+authors = [{ name = "Aleksander Mazur" }]
+keywords = ["foundation-models", "time-series", "forecasting", "agents", "research", "trading"]
+
+dependencies = [
+    "pandas>=2.0",
+    "numpy>=1.24",
+    "pyyaml>=6.0",
+    "pydantic>=2.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv>=1.0",
+    "streamlit>=1.30",
+    "plotly>=5.18",
+    "rich>=13.0",
+    "typer>=0.9",
+    "yfinance>=0.2.40",
+    "pyarrow>=15.0",
+    "statsmodels>=0.14",
+    "scipy>=1.11",
+    "torch>=2.2",
+    "chronos-forecasting>=1.5",
+    "scikit-learn>=1.4",
+    "hmmlearn>=0.3",
+    "networkx>=3.0",
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "deepagents>=0.5",
+    "openevals>=0.2",
+    "agentevals>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "ruff>=0.4",
+]
+
+[project.scripts]
+autosignalx = "autosignalx.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autosignalx"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests", "app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RET", "ARG"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ARG"]
+# ML convention: capital X for feature matrices (sklearn / numpy idiom)
+"src/autosignalx/signal/*" = ["N803", "N806"]
+"src/autosignalx/regime/*" = ["N803", "N806"]
+"src/autosignalx/forecast/*" = ["N803", "N806"]
+"src/autosignalx/graph/*" = ["N803", "N806"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
