@@ -164,6 +164,19 @@ def test_significance(
     return {"promotable": promotable, "evidence": evidence}
 
 
+def spawn_method(spec: dict[str, Any]) -> dict[str, Any]:
+    """Run a new agent-authored forecasting method specified by ``spec``.
+
+    The spec is a constrained JSON DSL (see ``agent.specs`` for schema).
+    On success, the new method's forecasts are persisted to
+    ``reports/ablations/<name>.parquet`` and become available in the
+    Forecast Arena panel and to ``test_significance`` / ``slice_forecasts``
+    for downstream evaluation."""
+    from autosignalx.agent import specs
+
+    return specs.execute(spec)
+
+
 def get_centrality_summary() -> dict[str, dict[str, float]]:
     """Per-asset centrality dictionary."""
     c = _load_centrality()

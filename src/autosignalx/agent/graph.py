@@ -78,36 +78,46 @@ def experiment_node(state: AgentState) -> AgentState:
             asset=params.get("asset"),
             regime_id=params.get("regime_id"),
         )
-        # Auto-promotion attempt: if the hypothesis names a method, run the
-        # significance gate against naive on the same slice and persist a
-        # finding when it passes.
         method = params.get("method")
-        if method and method != "naive":
-            sig = tools.test_significance(
-                method=method,
-                asset=params.get("asset"),
-                regime_id=params.get("regime_id"),
-            )
-            result["significance"] = sig
-            if sig.get("promotable"):
-                from autosignalx.agent import findings as findings_mod
-
-                finding = findings_mod.promote(
-                    hypothesis=h.get("hypothesis", ""),
-                    method=method,
-                    filters={
-                        "asset": params.get("asset"),
-                        "regime_id": params.get("regime_id"),
-                    },
-                    evidence=sig["evidence"],
-                    agent_confidence="auto-promoted by experiment gate",
-                    round=rd,
-                    session_id=state.get("session_id", "unknown"),
-                    parent_hypothesis_ids=h.get("parent_hypothesis_ids", []),
-                )
-                result["promoted_finding_id"] = finding.get("id")
+        target_filters = {
+            "asset": params.get("asset"),
+            "regime_id": params.get("regime_id"),
+        }
+    elif exp_type == "spawn_method":
+        # Agent-authored method via the Iter 13 constrained code-spec DSL.
+        spec = params.get("spec", {}) or {}
+        result = tools.spawn_method(spec)
+        method = spec.get("name") if result.get("status") == "ok" else None
+        target_filters = {"asset": None, "regime_id": None}
     else:
         result = {"error": f"unknown experiment type: {exp_type}"}
+        method = None
+        target_filters = {}
+
+    # Auto-promotion attempt: if a non-naive method now exists, run the
+    # significance gate against naive on the same slice and persist a
+    # finding when it passes.
+    if method and method != "naive":
+        sig = tools.test_significance(
+            method=method,
+            asset=target_filters.get("asset"),
+            regime_id=target_filters.get("regime_id"),
+        )
+        result["significance"] = sig
+        if sig.get("promotable"):
+            from autosignalx.agent import findings as findings_mod
+
+            finding = findings_mod.promote(
+                hypothesis=h.get("hypothesis", ""),
+                method=method,
+                filters=target_filters,
+                evidence=sig["evidence"],
+                agent_confidence="auto-promoted by experiment gate",
+                round=rd,
+                session_id=state.get("session_id", "unknown"),
+                parent_hypothesis_ids=h.get("parent_hypothesis_ids", []),
+            )
+            result["promoted_finding_id"] = finding.get("id")
 
     entry = {"round": rd, "step": "experiment", "content": result}
     ledger.append(entry)
