@@ -669,3 +669,62 @@ The Agent Console panel learns the new step types and renders each role with its
 - **A richer trace** for the cockpit and the WOW demo (Iter 19): debate-style transcripts read like a real research meeting.
 
 Suite total: 94 passing (6 new for debate node factories + prompt shapes + graph compile).
+
+---
+
+## Iter 13 — Code-spec experiment tool (constrained DSL)
+
+The agent's experiment surface so far has only sliced **existing** forecasts. Iter 13 lets the agent **author new methods** at runtime through a constrained JSON DSL — the agent designs the experiment, the harness executes it, the result is persisted as a normal `reports/ablations/<name>.parquet` indistinguishable from a human-authored method's results, the Iter 11 promotion gate fires automatically, and the new method becomes selectable in the Forecast Arena.
+
+This is the freedom expansion the user asked for: the agent now **creates**, not just observes.
+
+### Spec DSL
+
+`agent/specs.py` defines and validates the schema:
+
+```json
+{
+  "name": "chronos2_dxyonly_ensembled",        // alphanumeric, becomes method label
+  "base": "chronos2_multivariate",             // one of: naive, arima,
+                                               //   chronos2_univariate,
+                                               //   chronos2_multivariate
+  "covariate_subset": ["DX-Y.NYB"],            // optional; only chronos2_multivariate
+  "ensemble_naive_weight": 0.3,                // [0, 1]; 0 = pure base, 1 = pure naive
+  "max_windows": 8,                            // cap for fast iteration
+  "asset_subset": ["SPY", "EFA"]               // optional asset filter
+}
+```
+
+`validate_spec(spec) -> (bool, str)` enforces every field. Bad names, unknown bases, out-of-range weights, malformed covariate subsets — all rejected with a specific error message before any code executes.
+
+### Execution
+
+`specs.execute(spec)`:
+
+1. Validates the spec.
+2. Builds a real `ForecastFn` by composing primitives (base method + covariate subset for multivariate + naive ensembling).
+3. Runs through `harness.run_walk_forward` on the configured (possibly subsetted) asset universe and capped windows.
+4. Persists to `reports/ablations/<name>.parquet`.
+5. Returns `{status: "ok", name, output_path, n_rows, n_windows, summary: {mae, mape, dir_acc, crps}}`.
+
+### Agent integration
+
+`agent/tools.py` adds `spawn_method(spec) → result_dict` — the agent's hand on the DSL.
+
+`agent/prompts.py` THEORIST_SYSTEM is extended with a second experiment schema (`type: "spawn_method"`) and the same auto-promotion gate fires on the spawned method's name when significance passes.
+
+`agent/graph.py` `experiment_node` now branches on `experiment.type ∈ {slice_forecasts, spawn_method}` and the auto-promotion path is shared by both — a method authored by the agent and a human-authored method are treated identically by the gate.
+
+### Safety and scope
+
+- **No arbitrary code execution.** The DSL is structured JSON; the executor builds the forecast function from a small set of trusted primitives.
+- **`max_windows` defaults to small** (specs typically request 8-12 windows so a chronos-based agent-authored method fits in 1-2 minutes).
+- **`asset_subset`** lets the agent test its hypothesis on a small slice without paying for the full universe.
+
+The unconstrained version — agent writes raw Python sandboxed at execution time — is deferred to Iter 20.
+
+### Tests (9 new)
+
+`tests/test_specs.py`: minimal-valid spec passes; missing name / unknown base / bad name chars / bad covariate subset / bad ensemble weight / bad max_windows all rejected with specific errors; full valid spec accepted; ALLOWED_BASES contains the four expected methods.
+
+Suite total: 103 passing.

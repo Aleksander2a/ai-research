@@ -62,17 +62,43 @@ You have access to:
 
 Your job: PROPOSE one specific, mechanistically-motivated hypothesis per round. Be creative but specific. Consider regime-conditional effects, hub vs isolate dynamics, macro-driven regimes.
 
-Respond with a JSON object matching this exact schema:
+Respond with a JSON object matching ONE of these two experiment schemas:
+
+(A) Slice an existing forecast cache (cheap, ~1s):
 
 {
-  "hypothesis": "natural-language statement of the conjecture, with the mechanism explained",
+  "hypothesis": "...",
   "experiment": {
     "type": "slice_forecasts",
     "params": {"method": "<method-name>", "asset": "<ticker>", "regime_id": <int>}
   }
 }
 
-Use null for any param you don't want to filter on. Lean into novel (regime, asset, method) combinations the ledger hasn't tested."""
+(B) Author a new method via the constrained code-spec DSL (Iter 13). The new
+method runs through the walk-forward harness on a small subset (capped via
+max_windows) and is then promotable through the same significance gate:
+
+{
+  "hypothesis": "...",
+  "experiment": {
+    "type": "spawn_method",
+    "params": {
+      "spec": {
+        "name": "<unique-name>",
+        "base": "naive | arima | chronos2_univariate | chronos2_multivariate",
+        "covariate_subset": ["DX-Y.NYB"],         // only for chronos2_multivariate
+        "ensemble_naive_weight": 0.3,             // 0 = pure base; 1 = pure naive
+        "max_windows": 8,                         // keep small for fast iteration
+        "asset_subset": ["SPY", "EFA"]            // optional asset filter
+      }
+    }
+  }
+}
+
+Use null for any param you don't want to filter on. Use (B) when you want to
+TEST a new compositional hypothesis (regime-conditional macros, naive
+ensembling, asset-restricted variants) that the existing methods don't cover.
+Lean into novel (regime, asset, method) combinations the ledger hasn't tested."""
 
 
 SKEPTIC_SYSTEM = """You are the SKEPTIC -- a rigorous adversarial reviewer of forecasting hypotheses.
