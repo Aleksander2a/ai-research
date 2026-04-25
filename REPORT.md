@@ -224,6 +224,57 @@ The negative result *clarifies* the research question. If Iter 7 ends without fi
 
 ---
 
+---
+
+## Iter 4 — Representation layer: contrastive regimes
+
+The L2 representation layer lands. Two regime detectors train on a market-level feature matrix and produce per-timestep regime labels that downstream layers (signal selection in Iter 5; agent in Iter 7) condition on:
+
+- **Contrastive 1D-CNN encoder + KMeans (primary)** -- a small PyTorch model (2 conv blocks, 16-dim embedding, ~3k params) trained via triplet loss with positive=adjacent window, negative=distant window. The learned embedding space groups similar windows together; KMeans on the embeddings produces hard regime labels.
+- **Gaussian HMM on raw features (sanity-check baseline)** -- `hmmlearn.GaussianHMM` on the same standardized features. Models temporal transitions explicitly; serves as a check that the contrastive method isn't picking up spurious clusters.
+
+### Market features
+
+Built by `regime.labels.build_market_features`:
+- SPY daily returns, QQQ daily returns (proxies for market direction / dispersion)
+- Macro: ^TNX, ^VIX, DX-Y.NYB, CL=F (forward-filled and dropna'd to joint coverage)
+
+Standardized to zero mean, unit variance per column before encoding / HMM fit.
+
+### Encoder architecture and training
+
+```
+Conv1d(n_features -> 16, k=5, p=2) + GELU
+Conv1d(16 -> 32, k=5, p=2) + GELU
+AdaptiveAvgPool1d(1)
+Linear(32 -> embedding_dim)
+```
+
+Training: Adam lr=1e-3, 25 epochs, batch_size 64, triplet margin 1.0. Positive window offset in [-3, +3] days from anchor; negative offset >= 60 days from anchor. ~3,900 windows over 16 years of daily data.
+
+### Initial fit (default config: 4 regimes, 60-day window, 16-dim embedding)
+
+| Detector | N labeled timesteps | Regime sizes |
+|---|---:|---|
+| KMeans (contrastive) | 3,967 | {0: 1425, 1: 750, 2: 877, 3: 915} |
+| HMM (Gaussian) | 4,026 | {0: 1421, 1: 793, 2: 1241, 3: 571} |
+
+Both detectors find 4 distinct regimes with broadly similar dominance structure -- the largest regime (1421-1425 timesteps, ~35% of history) covers extended calm bull periods; the others split shorter / more turbulent episodes. End-to-end fit time: ~53s on CPU (encoder 25 epochs + KMeans + HMM 100 iter), all wrapped by `autosignalx regime fit`.
+
+### Cockpit and harness integration
+
+- **Regime Explorer panel**: KMeans timeline, HMM timeline (both as colored line charts), and a PCA-2D scatter of the contrastive embeddings colored by KMeans label. Reviewers can eyeball whether the regimes correspond to recognizable market periods (COVID crash, post-COVID rally, 2022 inflation, ZIRP-to-hike, ...).
+- **Forecast Arena**: now includes a "Per-method, per-regime" stratified table when regime labels exist. Forecasts are joined to KMeans regime labels on `forecast_origin`, then summarized by `(method, regime_id)`. This is how we will discover whether any (method, regime) slice meaningfully beats naive on MAE (the conditional improvement question opened by Iter 3's negative result).
+- **Layer status**: `autosignalx status` flips L2 Representation from "pending" to "ok (contrastive + KMeans + HMM)".
+
+### What this enables
+
+The regime labels are an input contract for Iters 5 (TabPFN signal ranking per regime), 6 (cross-asset graph computed within regimes), and 7 (agent that hunts for regime-specific predictive structure). Without regime labels, those iterations would have to invent ad-hoc segmentation. Now they can read regimes the way the eval harness reads forecasts: as a typed, persisted artifact under `reports/regimes/`.
+
+**Verification**: `make regime` runs end-to-end in ~1 minute; `make test` -> 67 tests passing (6 new for encoder + cluster); `make demo` -> Regime Explorer renders all three views; Forecast Arena shows per-regime stratification on the 4-method ablation.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.

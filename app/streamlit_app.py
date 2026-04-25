@@ -165,10 +165,40 @@ def render_forecast_arena() -> None:
                 "mape": "{:.3%}",
                 "dir_acc": "{:.1%}",
                 "skill_vs_naive": "{:+.3f}",
+                "crps": "{:.3f}",
             }
         ),
         use_container_width=True,
     )
+
+    # Regime-stratified view (optional; only if regime labels exist)
+    try:
+        from autosignalx.regime.labels import add_regime_to_forecasts
+
+        forecasts_r = add_regime_to_forecasts(forecasts, method="kmeans_contrastive")
+        if forecasts_r["regime_id"].notna().any():
+            st.subheader("Per-method, per-regime (KMeans regimes)")
+            by_regime = harness.summarize(
+                forecasts_r.dropna(subset=["regime_id"]),
+                by=["method", "regime_id"],
+            )
+            st.dataframe(
+                by_regime.style.format(
+                    {
+                        "mae": "{:.3f}",
+                        "mape": "{:.3%}",
+                        "dir_acc": "{:.1%}",
+                        "crps": "{:.3f}",
+                    }
+                ),
+                use_container_width=True,
+            )
+    except FileNotFoundError:
+        st.caption(
+            "Regime labels not available -- run `make regime` to enable per-regime stratification."
+        )
+    except Exception as e:  # noqa: BLE001
+        st.caption(f"Regime stratification failed: {e}")
 
     st.divider()
     st.subheader("Per-method, per-asset")
@@ -229,10 +259,88 @@ def render_forecast_arena() -> None:
         )
 
 
+def render_regime_explorer() -> None:
+    st.title("Regime Explorer")
+    st.caption(
+        "Latent market regimes from a contrastive temporal encoder + KMeans, "
+        "with a Gaussian HMM as a sanity-check baseline."
+    )
+
+    from autosignalx.config import settings
+
+    regime_dir = settings.reports_dir / "regimes"
+    if not regime_dir.exists() or not list(regime_dir.glob("*.parquet")):
+        st.warning(
+            "No regime labels yet. Run `make regime` (or "
+            "`uv run autosignalx regime fit`) to populate."
+        )
+        return
+
+    km = pd.read_parquet(regime_dir / "kmeans.parquet")
+    hmm_path = regime_dir / "hmm.parquet"
+    embed_path = regime_dir / "embeddings.parquet"
+    hmm = pd.read_parquet(hmm_path) if hmm_path.exists() else None
+    embed = pd.read_parquet(embed_path) if embed_path.exists() else None
+
+    cols = st.columns(3)
+    cols[0].metric("KMeans regimes", km["regime_id"].nunique())
+    cols[0].caption(f"{len(km):,} labeled timesteps")
+    if hmm is not None:
+        cols[1].metric("HMM regimes", hmm["regime_id"].nunique())
+        cols[1].caption(f"{len(hmm):,} labeled timesteps")
+
+    st.divider()
+    st.subheader("Regime timeline (KMeans on contrastive embeddings)")
+    timeline = (
+        km.set_index("timestamp")["regime_id"]
+        .sort_index()
+        .astype("int")
+    )
+    st.line_chart(timeline, height=200)
+
+    if hmm is not None:
+        st.subheader("Regime timeline (Gaussian HMM, sanity check)")
+        st.line_chart(
+            hmm.set_index("timestamp")["regime_id"].sort_index().astype("int"),
+            height=200,
+        )
+
+    if embed is not None and len(embed) > 0:
+        st.divider()
+        st.subheader("Embedding visualization (PCA-2D, colored by KMeans regime)")
+        import plotly.express as px
+        from sklearn.decomposition import PCA
+
+        embedding_cols = [c for c in embed.columns if c != "timestamp"]
+        embed_aligned = embed.merge(km[["timestamp", "regime_id"]], on="timestamp", how="inner")
+        if len(embed_aligned) >= 2 and len(embedding_cols) >= 2:
+            pca = PCA(n_components=2)
+            xy = pca.fit_transform(embed_aligned[embedding_cols].to_numpy())
+            scatter_df = pd.DataFrame(
+                {
+                    "PC1": xy[:, 0],
+                    "PC2": xy[:, 1],
+                    "regime": embed_aligned["regime_id"].astype("string"),
+                    "timestamp": embed_aligned["timestamp"].astype("string"),
+                }
+            )
+            fig = px.scatter(
+                scatter_df,
+                x="PC1",
+                y="PC2",
+                color="regime",
+                hover_data=["timestamp"],
+                opacity=0.6,
+                height=500,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
     "Forecast Arena": render_forecast_arena,
+    "Regime Explorer": render_regime_explorer,
 }
 
 
