@@ -11,11 +11,16 @@ The harness defines the contract every forecasting method satisfies. The
 contract is the seam that lets the regime, signal, graph, and agent layers
 plug in without tearing the eval surface apart."""
 
-from autosignalx.eval import contracts, harness, metrics  # noqa: F401
+from autosignalx.eval import contracts, harness, metrics, significance  # noqa: F401
 from autosignalx.eval.contracts import assert_forecast_schema  # noqa: F401
 from autosignalx.eval.harness import (  # noqa: F401
     ablation,
     add_skill_score,
     run_walk_forward,
     summarize,
+)
+from autosignalx.eval.significance import (  # noqa: F401
+    block_bootstrap_ci,
+    dm_test,
+    is_promotable,
 )
