@@ -17,6 +17,7 @@ from autosignalx.config import settings
 from autosignalx.data.cli import data_app
 from autosignalx.eval.cli import eval_app
 from autosignalx.regime.cli import regime_app
+from autosignalx.signal.cli import signal_app
 
 app = typer.Typer(
     name="autosignalx",
@@ -26,6 +27,7 @@ app = typer.Typer(
 app.add_typer(data_app, name="data")
 app.add_typer(eval_app, name="eval")
 app.add_typer(regime_app, name="regime")
+app.add_typer(signal_app, name="signal")
 console = Console()
 
 
@@ -82,7 +84,7 @@ def status() -> None:
     layers = [
         ("L1 Forecasting", "ok (baselines + chronos-2)", "complete in Iter 3"),
         ("L2 Representation", "ok (contrastive + KMeans + HMM)", "complete in Iter 4"),
-        ("L3 Reasoning", "pending", "Iter 5 -- signal"),
+        ("L3 Reasoning", "ok (TabPFN + permutation importance)", "complete in Iter 5"),
         ("L4 Relational", "pending", "Iter 6 -- graph"),
         ("L5 Agentic", "pending", "Iter 7 -- agent"),
     ]
