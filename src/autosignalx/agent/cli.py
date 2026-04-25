@@ -74,6 +74,33 @@ def run_cmd(
     console.print(table)
 
 
+@agent_app.command("score-traces")
+def score_traces_cmd(
+    session_id: str = typer.Option(
+        "current",
+        help="Session ID to score; 'current' = the entire current ledger.",
+    ),
+) -> None:
+    """Score every round of the current ledger via LLM-as-judge."""
+    from autosignalx.agent import trace_eval
+
+    entries = ledger.load()
+    if not entries:
+        console.print("Ledger is empty.")
+        return
+    console.print(
+        f"Scoring {max(int(e.get('round', 0)) for e in entries) + 1} rounds "
+        f"({len(entries)} ledger entries)..."
+    )
+    scores = trace_eval.score_session(entries, session_id=session_id)
+    for s in scores:
+        console.print(
+            f"  round {s['round']}: clarity={s.get('clarity')} "
+            f"novelty={s.get('novelty')} falsifiability={s.get('falsifiability')} "
+            f"evidence_citing={s.get('evidence_citing')}  --  {s.get('rationale', '')[:80]}"
+        )
+
+
 @agent_app.command("status")
 def status_cmd() -> None:
     """Print ledger size and last-round summary."""

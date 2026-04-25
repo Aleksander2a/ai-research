@@ -772,3 +772,46 @@ Reviewers can trace any promoted finding back to the initial brainstorm and see 
 - Lineage DataFrame columns include the expected fields and root nodes show `(root)`.
 
 Suite total: 113 passing.
+
+---
+
+## Iter 15 — Trace quality scoring (LLM-as-judge)
+
+How do we know if the agent is *thinking better* over time? Iter 15 makes that observable: an evaluator LLM scores each round on four research-quality rubrics, persists the scores to `reports/agent/trace_quality.jsonl`, and the Agent Console renders the trend.
+
+### Rubrics (1-5 each)
+
+- **clarity** — was the hypothesis specific enough to be tested?
+- **novelty** — did this round explore a (regime, asset, method) combination not yet in the ledger?
+- **falsifiability** — was the prediction concrete enough that the experiment could in principle refute it?
+- **evidence_citing** — did the critique / adjudication cite specific ledger or artifact entries (not just generic concerns)?
+
+### Implementation (`agent/trace_eval.py`)
+
+- **`JUDGE_SYSTEM`** — system prompt that fixes the rubric and the JSON output schema.
+- **`score_round(round_number, round_entries, ledger_summary, provider)`** — bundles the round's ledger entries plus a summary of preceding rounds, calls the judge, parses the JSON. Returns `{round, clarity, novelty, falsifiability, evidence_citing, rationale, ts}`. Default `provider` is the `critic`-role LLM (smaller / cheaper than the proposer).
+- **`score_session(ledger_entries, session_id, provider)`** — groups entries by round, runs the judge on each, persists to JSONL, returns the scores list.
+- **`load()`** / **`clear()`** — round-trip the persisted store.
+
+The judge is routed through our existing `LLMProvider` abstraction, so live (DeepInfra) and replay modes both work — same as every other LLM call in the agent layer.
+
+### CLI
+
+`autosignalx agent score-traces [--session-id <id>]` runs the judge over the current ledger and prints per-round scores.
+
+### Cockpit
+
+The Agent Console panel grows a **trace-quality line chart** at the bottom showing the four rubric scores per round. Reviewers can see (e.g.) clarity climbing while novelty stays high — the signature of an agent learning *how* to ask better questions.
+
+### Why this matters for the WOW demo (Iter 19)
+
+The trace quality chart over a long recorded session is one of the strongest visual signals that the agent is genuinely *improving*, not just running on autopilot. Coupled with the Findings store (Iter 11), Lineage DAG (Iter 14), and Memory consolidation (Iter 16), it makes the agent's autonomy *measurable*.
+
+### Tests (4 new)
+
+- Replay-provider judge returns the four expected score keys.
+- Unparseable judge response yields None scores but preserves the structure.
+- `score_session` persists and round-trips through `load()`.
+- Long entry content is truncated in the round summary.
+
+Suite total: 117 passing. Reference: `openevals.create_llm_as_judge` and `agentevals` trajectory evaluation -- the same conceptual pattern, routed through our DeepInfra provider abstraction.
