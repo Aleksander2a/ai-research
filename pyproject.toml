@@ -25,6 +25,8 @@ dependencies = [
     "scipy>=1.11",
     "torch>=2.2",
     "chronos-forecasting>=1.5",
+    "scikit-learn>=1.4",
+    "hmmlearn>=0.3",
 ]
 
 [project.optional-dependencies]
