@@ -531,31 +531,41 @@ def render_agent_console() -> None:
 
     st.divider()
     st.subheader("Trace timeline")
+    role_icon = {
+        "propose": "🧠",
+        "theorist": "💡",
+        "skeptic": "🔍",
+        "experiment": "🧪",
+        "critique": "📝",
+        "adjudicator": "⚖️",
+        "decide": "🎯",
+    }
     for e in entries:
         rd = e.get("round", "?")
         step = e.get("step", "?")
         ts = e.get("ts", "")
         content = e.get("content", "")
-        if step == "propose":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- propose**  *(at {ts})*")
+        icon = role_icon.get(step, "•")
+        is_user_role = step == "experiment"
+        chat_role = "user" if is_user_role else "assistant"
+        with st.chat_message(chat_role):
+            st.markdown(f"{icon} **round {rd} -- {step}**  *({ts})*")
+            if step in ("propose", "theorist"):
                 if isinstance(content, dict):
                     st.markdown(f"_Hypothesis_: {content.get('hypothesis', '')}")
                     exp = content.get("experiment", {})
                     if exp:
                         st.code(json.dumps(exp, indent=2), language="json")
-        elif step == "experiment":
-            with st.chat_message("user"):
-                st.markdown(f"**round {rd} -- experiment result**")
+            elif step == "experiment":
                 st.json(content)
-        elif step == "critique":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- critique**")
+                if isinstance(content, dict) and content.get("promoted_finding_id"):
+                    st.success(f"✓ Promoted finding: `{content['promoted_finding_id']}`")
+            elif step in ("critique", "skeptic", "adjudicator"):
                 st.markdown(content if isinstance(content, str) else str(content))
-        elif step == "decide":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- decide**")
+            elif step == "decide":
                 st.json(content)
+            else:
+                st.write(content)
 
 
 def render_ask_the_memory() -> None:
