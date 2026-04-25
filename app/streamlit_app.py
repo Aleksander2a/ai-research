@@ -124,9 +124,89 @@ def render_data() -> None:
         st.error(f"Could not render macro: {e}")
 
 
+def render_forecast_arena() -> None:
+    st.title("Forecast Arena")
+    st.caption(
+        "Per-method, per-asset forecast comparison on walk-forward windows. "
+        "New methods are appended to reports/ablations/ as their iterations land."
+    )
+
+    from pathlib import Path
+
+    from autosignalx.config import settings
+    from autosignalx.eval import harness
+
+    ablations_dir = settings.reports_dir / "ablations"
+    parquets: list[Path] = sorted(ablations_dir.glob("*.parquet")) if ablations_dir.exists() else []
+    if not parquets:
+        st.info(
+            "No ablation results cached yet. Run `make baseline` (or "
+            "`uv run autosignalx eval baseline`) to populate."
+        )
+        return
+
+    forecasts = pd.concat(
+        [pd.read_parquet(p) for p in parquets], ignore_index=True
+    )
+
+    st.caption(
+        f"Loaded {len(forecasts):,} forecast rows from {len(parquets)} file(s): "
+        + ", ".join(p.name for p in parquets)
+    )
+
+    overall = harness.add_skill_score(
+        harness.summarize(forecasts, by=["method"]), baseline_method="naive"
+    )
+    st.subheader("Per-method (overall)")
+    st.dataframe(
+        overall.style.format(
+            {
+                "mae": "{:.3f}",
+                "mape": "{:.3%}",
+                "dir_acc": "{:.1%}",
+                "skill_vs_naive": "{:+.3f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Per-method, per-asset")
+    per_asset = harness.add_skill_score(harness.summarize(forecasts), baseline_method="naive")
+    st.dataframe(
+        per_asset.style.format(
+            {
+                "mae": "{:.3f}",
+                "mape": "{:.3%}",
+                "dir_acc": "{:.1%}",
+                "skill_vs_naive": "{:+.3f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Forecast trajectory")
+    asset_choice = st.selectbox("Asset", sorted(forecasts["asset"].unique()))
+    asset_forecasts = forecasts[forecasts["asset"] == asset_choice].copy()
+    if asset_forecasts.empty:
+        st.warning("No forecasts for this asset.")
+        return
+    asset_forecasts = asset_forecasts.sort_values("timestamp")
+    pivot = asset_forecasts.pivot_table(
+        index="timestamp", columns="method", values="prediction", aggfunc="mean"
+    )
+    target_series = (
+        asset_forecasts.drop_duplicates("timestamp").set_index("timestamp")["target"]
+    )
+    pivot["target"] = target_series
+    st.line_chart(pivot, height=400)
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
+    "Forecast Arena": render_forecast_arena,
 }
 
 
