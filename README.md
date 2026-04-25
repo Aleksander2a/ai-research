@@ -2,7 +2,7 @@
 
 > A modular AI research instrument for discovering predictive structure in dynamic markets.
 
-AutoSignal-X is a 5-layer research stack that combines foundation forecasting (**Chronos-2**), learned temporal representations (contrastive encoder + clustering), structured signal reasoning (**TabPFN**), relational analysis (partial-correlation graphs + Granger causality), and an agentic discovery loop (**LangGraph + deepagents**) into a unified workflow for studying *what makes signals predictive, when, and why* under regime shifts.
+AutoSignal-X is a 5-layer research stack that combines foundation forecasting (**Chronos-2**), learned temporal representations (contrastive encoder + clustering), per-regime feature ranking (**HistGradientBoosting + permutation importance**), relational analysis (partial-correlation graphs + Granger causality), and an agentic discovery loop (**LangGraph + DeepInfra**) into a unified workflow for studying *what makes signals predictive, when, and why* under regime shifts.
 
 This is a research artifact, not a product. The goal is to make scientific discovery *legible*: every layer's output is inspectable, every experiment is logged into a persistent ledger, and the agent's reasoning is rendered in a Streamlit cockpit.
 
@@ -23,7 +23,7 @@ This is a research artifact, not a product. The goal is to make scientific disco
 |---|---|---|
 | **L1 Forecasting** | Probabilistic point + interval forecasts | Chronos-2 (frozen), multivariate with covariates |
 | **L2 Representation** | Latent regime discovery | Small contrastive 1D-CNN encoder + KMeans (HMM as sanity-check baseline) |
-| **L3 Reasoning** | Per-regime feature relevance | TabPFN ranking over technical + macro features |
+| **L3 Reasoning** | Per-regime feature relevance | HistGradientBoosting + permutation importance over technical + macro features |
 | **L4 Relational** | Cross-asset dependency structure | NetworkX + statsmodels: GLASSO partial-correlation + Granger causality + centrality |
 | **L5 Agentic** | Hypothesis generation, experiment orchestration | LangGraph state machine + deepagents; openevals/agentevals for trace quality |
 
@@ -102,6 +102,12 @@ export UV_CACHE_DIR="$PWD/.uv-cache"
 uv sync --all-extras
 ```
 
+## Documentation map
+
+- **README.md** (this file) — project framing, headline findings, reviewer journey, quick start.
+- **[REPORT.md](REPORT.md)** — layer-by-layer findings narrative; executive summary at top, per-iteration sections that grew with the codebase.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — factual implementation reference: data-flow diagram, contracts between layers, per-layer wiring, the agent loop.
+
 ## Repository layout
 
 ```
@@ -110,7 +116,7 @@ src/autosignalx/        # Library — one module per layer
   eval/                 # Walk-forward harness, metrics, ablations (Iter 2)
   forecast/             # Chronos-2 + classical baselines          (Iter 3)
   regime/               # Contrastive encoder + clustering         (Iter 4)
-  signal/               # Feature engineering + TabPFN ranking     (Iter 5)
+  signal/               # Feature engineering + per-regime ranking (Iter 5)
   graph/                # Partial-corr + Granger + centrality      (Iter 6)
   agent/                # LangGraph state machine + ledger         (Iter 7)
   cli.py                # Typer entrypoint dispatching to each layer
@@ -118,7 +124,6 @@ src/autosignalx/        # Library — one module per layer
 app/                    # Streamlit research cockpit (one panel per layer)
 configs/                # YAML experiment configs
 tests/                  # Pytest — leakage, contracts, smoke
-docs/proposals/         # Original research and UI blueprints
 data/                   # (gitignored) cached parquet
 reports/                # Per-run artifacts; runs/ is gitignored
 replay/                 # Pre-recorded agent traces for no-LLM-key mode
@@ -136,7 +141,7 @@ Each iteration ships a runnable system and merges into the integration branch wi
 | 2 | `iter-2-baselines` | Walk-forward harness with naive + ARIMA |
 | 3 | `iter-3-chronos2` | Chronos-2 multivariate forecasting with covariates |
 | 4 | `iter-4-regime` | Contrastive temporal encoder + regime clustering |
-| 5 | `iter-5-signal` | Regime-aware signal ranking via TabPFN |
+| 5 | `iter-5-signal` | Regime-aware feature ranking (HistGradientBoosting + permutation importance) |
 | 6 | `iter-6-graph` | Partial-correlation + Granger cross-asset graph |
 | 7 | `iter-7-agent` | LangGraph agentic research loop + persistent ledger |
 | 8 | `iter-8-cockpit` | Polished cockpit with reviewer-journey navigation |

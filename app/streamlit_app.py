@@ -365,8 +365,9 @@ def render_regime_explorer() -> None:
 def render_signal_lab() -> None:
     st.title("Signal Discovery Lab")
     st.caption(
-        "Per-regime feature relevance ranking via TabPFN + permutation importance. "
-        "Higher importance => shuffling the feature hurt accuracy more."
+        "Per-regime feature relevance ranking via HistGradientBoosting + "
+        "permutation importance. Higher importance => shuffling the feature "
+        "hurt accuracy more."
     )
 
     from autosignalx.config import settings
