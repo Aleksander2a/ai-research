@@ -728,3 +728,47 @@ The unconstrained version — agent writes raw Python sandboxed at execution tim
 `tests/test_specs.py`: minimal-valid spec passes; missing name / unknown base / bad name chars / bad covariate subset / bad ensemble weight / bad max_windows all rejected with specific errors; full valid spec accepted; ALLOWED_BASES contains the four expected methods.
 
 Suite total: 103 passing.
+
+---
+
+## Iter 14 — Hypothesis lineage DAG
+
+The agent now generates many hypotheses per session — across slice and spawn experiments, across debate rounds. Some refine earlier ideas; some go in entirely new directions. Iter 14 makes that **lineage** visible: a DAG where nodes are unique hypotheses (deduped by content hash) and edges show inferred parent → child refinements.
+
+### Lineage construction
+
+`agent/lineage.py`:
+
+- **`hypothesis_id(content)`** — stable `h_<hash10>` ID derived from hypothesis text + experiment params. The same hypothesis re-proposed gets the same node.
+- **`build_lineage(ledger_entries, finding_records, parent_lookback, overlap_threshold)`** — walks the ledger, dedupes propose/theorist entries by content hash, and infers parent edges by **method/asset/regime overlap**: a hypothesis at round `r` whose params match (≥1 of method/asset/regime_id) with a hypothesis from any of the prior `parent_lookback` rounds gets that prior as its parent (the closest one wins).
+- **Status assignment**:
+  - `promoted` — the hypothesis matches a promoted finding (by round-of-promotion or by appearing in the finding's `parent_hypothesis_ids`).
+  - `refuted` — an adjudicator step in the same round contained `VERDICT: refute`.
+  - `open` — neither.
+- **`lineage_dataframe(lineage)`** — convenience tabular view: `(id, round, status, hypothesis, parents)`.
+
+### Cockpit panel
+
+New **"Lineage"** panel between **Findings** and **Ask the Memory**:
+
+- Three top-level metrics (total / promoted / refuted hypotheses).
+- Tabular DAG view (id, round, status, hypothesis text, parent IDs).
+- **Plotly DAG** rendering with:
+  - X-axis = round number (left → right = chronological).
+  - Y-axis = vertical jitter so hypotheses from the same round don't overlap.
+  - Node color: green=promoted, red=refuted, gray=open.
+  - Hover text: full hypothesis preview + experiment params.
+
+Reviewers can trace any promoted finding back to the initial brainstorm and see the refinement chain — exactly the visibility the Iter 19 WOW demo will lean on.
+
+### Tests (8 new)
+
+- ID stability under identical content; different methods → different IDs.
+- Empty ledger → empty lineage.
+- Overlapping (method, asset, regime) chains a parent edge.
+- Disjoint hypotheses produce no edges.
+- Promoted status via finding-round match.
+- Refuted status via adjudicator `VERDICT: refute`.
+- Lineage DataFrame columns include the expected fields and root nodes show `(root)`.
+
+Suite total: 113 passing.

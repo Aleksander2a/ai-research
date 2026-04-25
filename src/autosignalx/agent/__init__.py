@@ -19,6 +19,7 @@ from autosignalx.agent import (  # noqa: F401
     findings,
     graph,
     ledger,
+    lineage,
     llm,
     prompts,
     specs,

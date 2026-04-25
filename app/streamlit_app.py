@@ -698,6 +698,103 @@ def render_findings() -> None:
                 st.code(json.dumps(r.get("replications", []), indent=2), language="json")
 
 
+def render_lineage() -> None:
+    st.title("Hypothesis Lineage")
+    st.caption(
+        "DAG of hypotheses across rounds: nodes are unique hypotheses "
+        "(deduped by content hash), edges show inferred parent->child "
+        "refinements. Status colors: green=promoted, red=refuted, gray=open."
+    )
+
+    from autosignalx.agent import lineage as lineage_mod
+
+    lineage = lineage_mod.build_lineage()
+    nodes = lineage.get("nodes", [])
+    if not nodes:
+        st.warning("No hypotheses in the ledger yet. Run `make agent`.")
+        return
+
+    cols = st.columns(3)
+    cols[0].metric("Hypotheses", len(nodes))
+    cols[1].metric("Promoted", sum(1 for n in nodes if n["status"] == "promoted"))
+    cols[2].metric("Refuted", sum(1 for n in nodes if n["status"] == "refuted"))
+
+    st.divider()
+    df = lineage_mod.lineage_dataframe(lineage)
+    st.dataframe(df, use_container_width=True)
+
+    if not lineage.get("edges"):
+        st.caption("No parent->child edges inferred yet (need >=2 hypotheses with overlapping method/asset/regime).")
+        return
+
+    # Render the DAG with networkx + plotly
+    try:
+        import networkx as nx
+        import plotly.graph_objects as go
+
+        g = nx.DiGraph()
+        for n in nodes:
+            g.add_node(n["id"], **n)
+        for e in lineage["edges"]:
+            g.add_edge(e["source"], e["target"])
+
+        # Layered layout by round
+        pos = {}
+        rounds = sorted({n["round"] for n in nodes})
+        for r in rounds:
+            ns_at = [n for n in nodes if n["round"] == r]
+            for i, n in enumerate(ns_at):
+                pos[n["id"]] = (r, i - len(ns_at) / 2)
+
+        edge_x, edge_y = [], []
+        for src, tgt in g.edges():
+            x0, y0 = pos[src]
+            x1, y1 = pos[tgt]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+        edge_trace = go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            line={"width": 1, "color": "#888"},
+            hoverinfo="none",
+            mode="lines",
+        )
+        color_map = {"promoted": "#2ca02c", "refuted": "#d62728", "open": "#7f7f7f"}
+        node_x, node_y, node_color, node_text, node_hover = [], [], [], [], []
+        for n in nodes:
+            x, y = pos[n["id"]]
+            node_x.append(x)
+            node_y.append(y)
+            node_color.append(color_map.get(n["status"], "#7f7f7f"))
+            node_text.append(n["id"])
+            params = json.dumps(n["params"], default=str)[:80]
+            node_hover.append(f"{n['id']} ({n['status']})<br>round {n['round']}<br>{n['hypothesis'][:120]}<br>params: {params}")
+        node_trace = go.Scatter(
+            x=node_x,
+            y=node_y,
+            mode="markers+text",
+            text=node_text,
+            textposition="bottom center",
+            hovertext=node_hover,
+            hoverinfo="text",
+            marker={"size": 18, "color": node_color, "line": {"width": 1, "color": "#333"}},
+        )
+        fig = go.Figure(
+            data=[edge_trace, node_trace],
+            layout=go.Layout(
+                title="Lineage DAG (round on x-axis)",
+                showlegend=False,
+                xaxis={"title": "round", "showgrid": False, "zeroline": False},
+                yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
+                height=500,
+                margin={"l": 20, "r": 20, "t": 60, "b": 40},
+            ),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"DAG rendering failed: {e}")
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -707,6 +804,7 @@ PANELS = {
     "Cross-Asset Graph": render_cross_asset_graph,
     "Agent Console": render_agent_console,
     "Findings": render_findings,
+    "Lineage": render_lineage,
     "Ask the Memory": render_ask_the_memory,
 }
 
