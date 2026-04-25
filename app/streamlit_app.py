@@ -668,6 +668,81 @@ def render_trace_quality_chart() -> None:
     )
 
 
+def render_telemetry() -> None:
+    st.title("Telemetry")
+    st.caption(
+        "Cost / latency / token usage for live LLM calls. "
+        "Cached and replay-mode calls don't generate records. "
+        "Cost is estimated from a per-model price table (override via "
+        "`DEEPINFRA_PRICE_<MODEL>_IN/_OUT` env vars)."
+    )
+
+    from autosignalx.agent import telemetry as telemetry_mod
+
+    rows = telemetry_mod.load()
+    if not rows:
+        st.info(
+            "No telemetry records yet. Live LLM calls (non-cached, "
+            "non-replay) automatically record to "
+            "`reports/agent/telemetry.jsonl`."
+        )
+        return
+
+    df = pd.DataFrame(rows)
+    cols = st.columns(4)
+    cols[0].metric("Total calls", f"{len(df):,}")
+    cols[1].metric("Total cost (USD)", f"${df['cost_usd'].sum():.4f}")
+    cols[2].metric("Total tokens", f"{int(df['total_tokens'].sum()):,}")
+    cols[3].metric("Median latency (ms)", f"{int(df['latency_ms'].median()):,}")
+
+    st.divider()
+    st.subheader("Per-model breakdown")
+    by_model = (
+        df.groupby("model")
+        .agg(
+            calls=("model", "count"),
+            tokens=("total_tokens", "sum"),
+            cost=("cost_usd", "sum"),
+            latency_p50=("latency_ms", "median"),
+            latency_p95=("latency_ms", lambda s: s.quantile(0.95)),
+        )
+        .sort_values("cost", ascending=False)
+    )
+    st.dataframe(
+        by_model.style.format(
+            {
+                "tokens": "{:,}",
+                "cost": "${:.4f}",
+                "latency_p50": "{:,.0f}",
+                "latency_p95": "{:,.0f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Per-step breakdown")
+    by_step = (
+        df.groupby("step")
+        .agg(
+            calls=("step", "count"),
+            tokens=("total_tokens", "sum"),
+            cost=("cost_usd", "sum"),
+        )
+        .sort_values("cost", ascending=False)
+    )
+    st.dataframe(
+        by_step.style.format({"tokens": "{:,}", "cost": "${:.4f}"}),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Cost per round (cumulative)")
+    df_sorted = df.sort_values("ts").reset_index(drop=True)
+    df_sorted["cum_cost"] = df_sorted["cost_usd"].cumsum()
+    st.line_chart(df_sorted[["cum_cost"]], height=250)
+
+
 def render_lessons() -> None:
     st.title("Lessons & Memory")
     st.caption(
@@ -848,6 +923,7 @@ PANELS = {
     "Findings": render_findings,
     "Lineage": render_lineage,
     "Lessons & Memory": render_lessons,
+    "Telemetry": render_telemetry,
     "Ask the Memory": render_ask_the_memory,
 }
 
