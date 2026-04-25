@@ -5,6 +5,8 @@ done and what it has discovered. Panels light up as their iterations land."""
 
 from __future__ import annotations
 
+import json
+
 import pandas as pd
 import streamlit as st
 
@@ -475,6 +477,141 @@ def render_cross_asset_graph() -> None:
         )
 
 
+def render_agent_console() -> None:
+    st.title("Agent Console")
+    st.caption(
+        "LangGraph state machine over DeepInfra LLMs (or replay mode). "
+        "Every step is appended to a persistent JSONL ledger -- the system's "
+        "long-horizon memory cell."
+    )
+
+    from autosignalx.agent import ledger as ledger_mod
+    from autosignalx.config import settings
+
+    mode = "replay" if settings.use_replay else "live"
+    cols = st.columns(3)
+    cols[0].metric("Mode", mode)
+    entries = ledger_mod.load()
+    cols[1].metric("Ledger entries", len(entries))
+    if entries:
+        last_round = max(e.get("round", 0) for e in entries)
+        cols[2].metric("Last round", int(last_round))
+
+    if not entries:
+        st.warning(
+            "No ledger entries yet. Run `make agent` (or "
+            "`uv run autosignalx agent run`) to populate."
+        )
+        return
+
+    st.divider()
+    st.subheader("Trace timeline")
+    for e in entries:
+        rd = e.get("round", "?")
+        step = e.get("step", "?")
+        ts = e.get("ts", "")
+        content = e.get("content", "")
+        if step == "propose":
+            with st.chat_message("assistant"):
+                st.markdown(f"**round {rd} -- propose**  *(at {ts})*")
+                if isinstance(content, dict):
+                    st.markdown(f"_Hypothesis_: {content.get('hypothesis', '')}")
+                    exp = content.get("experiment", {})
+                    if exp:
+                        st.code(json.dumps(exp, indent=2), language="json")
+        elif step == "experiment":
+            with st.chat_message("user"):
+                st.markdown(f"**round {rd} -- experiment result**")
+                st.json(content)
+        elif step == "critique":
+            with st.chat_message("assistant"):
+                st.markdown(f"**round {rd} -- critique**")
+                st.markdown(content if isinstance(content, str) else str(content))
+        elif step == "decide":
+            with st.chat_message("assistant"):
+                st.markdown(f"**round {rd} -- decide**")
+                st.json(content)
+
+
+def render_ask_the_memory() -> None:
+    st.title("Ask the Memory")
+    st.caption(
+        "Free-form question against the agent's experiment ledger. In live "
+        "mode, the LLM answers using ledger context. In replay mode, simple "
+        "keyword search returns matching ledger entries."
+    )
+
+    from autosignalx.agent import ledger as ledger_mod
+    from autosignalx.config import settings
+
+    entries = ledger_mod.load()
+    if not entries:
+        st.warning("Ledger empty. Run `make agent` first.")
+        return
+
+    if "memory_history" not in st.session_state:
+        st.session_state.memory_history = []
+
+    for q, a in st.session_state.memory_history:
+        with st.chat_message("user"):
+            st.markdown(q)
+        with st.chat_message("assistant"):
+            st.markdown(a)
+
+    question = st.chat_input("Ask the agent's memory...")
+    if not question:
+        return
+
+    if settings.use_replay or not settings.deepinfra_api_key:
+        # Deterministic fallback: keyword search
+        ql = question.lower()
+        hits = [
+            e for e in entries
+            if any(
+                ql_term in json.dumps(e, default=str).lower()
+                for ql_term in ql.split()
+                if len(ql_term) > 2
+            )
+        ][:8]
+        if hits:
+            answer_parts = ["**Replay-mode keyword search** (no LLM call):"]
+            for e in hits:
+                answer_parts.append(
+                    f"- round {e.get('round')} {e.get('step')}: "
+                    f"{json.dumps(e.get('content', ''), default=str)[:200]}"
+                )
+            answer = "\n".join(answer_parts)
+        else:
+            answer = "_No ledger entries matched. Try different keywords._"
+    else:
+        # Live mode: stuff ledger into the prompt
+        try:
+            from autosignalx.agent.ledger import summarize_for_prompt
+            from autosignalx.agent.llm import get_provider
+
+            provider = get_provider(record_replay=False)
+            ledger_summary = summarize_for_prompt(entries, limit=40)
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "You answer questions about an experiment ledger from a "
+                        "quantitative ML research agent. Cite specific rounds when relevant."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"## Ledger\n{ledger_summary}\n\n## Question\n{question}",
+                },
+            ]
+            answer = provider.chat(messages, step="ask_memory", round=-1)
+        except Exception as e:  # noqa: BLE001
+            answer = f"LLM call failed: {e}"
+
+    st.session_state.memory_history.append((question, answer))
+    st.rerun()
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -482,6 +619,8 @@ PANELS = {
     "Regime Explorer": render_regime_explorer,
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
+    "Agent Console": render_agent_console,
+    "Ask the Memory": render_ask_the_memory,
 }
 
 
