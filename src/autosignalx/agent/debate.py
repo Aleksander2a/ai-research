@@ -38,7 +38,7 @@ def make_theorist_node(record_replay: bool = False):
         if not h:
             h = {"hypothesis": "(parse failed)", "experiment": {}, "raw": raw[:500]}
         h["proposer_role"] = "theorist"
-        entry = {"round": rd, "step": "theorist", "content": h}
+        entry = {"round": rd, "step": "theorist", "content": h, "session_id": state.get("session_id")}
         ledger_mod.append(entry)
         state["current_hypothesis"] = h
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -55,7 +55,7 @@ def make_skeptic_node(record_replay: bool = False):
         h = state.get("current_hypothesis") or {}
         msgs = prompts.skeptic_messages(h)
         challenge = provider.chat(msgs, step="skeptic", round=rd).strip()
-        entry = {"round": rd, "step": "skeptic", "content": challenge}
+        entry = {"round": rd, "step": "skeptic", "content": challenge, "session_id": state.get("session_id")}
         ledger_mod.append(entry)
         # Attach challenge to the hypothesis for downstream visibility
         if "skeptic_challenge" not in h:
@@ -78,7 +78,7 @@ def make_adjudicator_node(record_replay: bool = False):
         experiment = state.get("current_experiment") or {}
         msgs = prompts.adjudicator_messages(h, challenge, experiment)
         verdict = provider.chat(msgs, step="adjudicator", round=rd).strip()
-        entry = {"round": rd, "step": "adjudicator", "content": verdict}
+        entry = {"round": rd, "step": "adjudicator", "content": verdict, "session_id": state.get("session_id")}
         ledger_mod.append(entry)
         state["ledger"] = state.get("ledger", []) + [entry]
         # Routing: stop if max_rounds; else continue

@@ -913,3 +913,54 @@ The headline metric for the WOW demo (Iter 19) becomes "**$X.XX of compute → Y
 - `CallTimer` measures elapsed time correctly.
 
 Suite total: 127 passing.
+
+---
+
+## Iter 18 — Scheduled runs + multi-session productivity
+
+The agent has been treated as a one-shot through Iter 17. Iter 18 makes it **continuously running**: a single `scripts/run_session.sh` (or `.ps1` for Windows Task Scheduler) executes one full agent session — debate-mode, score-traces, consolidate — and is meant to be cron-scheduled. As sessions accumulate, the project's value compounds: more findings, richer lessons doc, observable productivity trends.
+
+### Session ID propagation
+
+Every persisted record now carries a `session_id` for cross-session aggregation:
+
+- **Ledger** (`reports/agent/ledger.jsonl`) — every entry: propose / theorist / skeptic / experiment / critique / adjudicator / decide. Updated `agent/graph.py` and `agent/debate.py` to thread `state["session_id"]` into every `ledger.append(...)` call.
+- **Findings** (`reports/agent/findings.jsonl`) — already from Iter 11.
+- **Telemetry** (`reports/agent/telemetry.jsonl`) — already from Iter 17.
+- **Trace quality** (`reports/agent/trace_quality.jsonl`) — already from Iter 15.
+- **Lessons** (`reports/agent/lessons.md`) — session ID in section header from Iter 16.
+
+### Aggregation (`agent/sessions.py`)
+
+- **`list_sessions()`** — distinct session IDs across all stores, sorted chronologically (YYYYMMDD-prefix sortable).
+- **`session_summary(session_id)`** — per-session aggregates: `(n_rounds, n_propose, n_findings, n_refuted, cost_usd, total_tokens, latency_total_ms, avg_clarity, promotion_rate, cost_per_finding)`.
+- **`all_summaries()`** — one row per session as a DataFrame.
+- **`productivity_trend()`** — cumulative findings / cost across sessions for trend rendering.
+
+### Scheduled runners
+
+- **`scripts/run_session.sh`** (bash, cron-compatible) — runs one full session: `agent run --mode debate --record-replay` → `agent score-traces` → `agent consolidate`. Configurable via `AUTOSIGNALX_ROUNDS` / `AUTOSIGNALX_MODE` env vars.
+- **`scripts/run_session.ps1`** (PowerShell, Windows Task Scheduler) — same pipeline, same env vars.
+- Cron example baked into the script's docstring: `0 3 * * * cd /path/to/repo && bash scripts/run_session.sh >> reports/agent/cron.log 2>&1`.
+
+### Cockpit
+
+New **"Sessions"** panel between Telemetry and Ask the Memory:
+
+- **4 headline metrics**: total sessions, total findings, total cost, **cost per finding**.
+- **Per-session summary table**: every row with all the metrics from `session_summary`.
+- **Productivity trend chart**: cumulative findings and cumulative cost over the chronological session sequence — visualizes the compounding-knowledge story.
+
+### `make scheduled-session`
+
+Added Makefile target that wraps the scheduled runner for manual invocation; the cron schedule itself is OS-specific so we document it in the script docstrings rather than hard-coding.
+
+### Tests (5 new)
+
+- Empty-state `list_sessions()` returns `[]`.
+- Distinct session IDs across stores are deduped.
+- `session_summary` aggregates findings, refute count, cost, tokens, promotion rate correctly.
+- `all_summaries()` returns a DataFrame with the expected columns.
+- `productivity_trend()` computes cumulative `cum_findings` correctly across two sessions.
+
+Suite total: 132 passing.
