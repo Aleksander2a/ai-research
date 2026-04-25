@@ -23,6 +23,8 @@ dependencies = [
     "pyarrow>=15.0",
     "statsmodels>=0.14",
     "scipy>=1.11",
+    "torch>=2.2",
+    "chronos-forecasting>=1.5",
 ]
 
 [project.optional-dependencies]

@@ -42,6 +42,15 @@ def _fmt_skill(val: object) -> str:
     return f"{float(val):+.3f}"
 
 
+def _fmt_value(val: object) -> str:
+    """Plain absolute-value formatter (no +/-) for non-skill metrics like CRPS."""
+    if val is None:
+        return "  n/a"
+    if isinstance(val, float) and math.isnan(val):
+        return "  n/a"
+    return f"{float(val):.3f}"
+
+
 @eval_app.command("baseline")
 def baseline_cmd(
     config: str = typer.Option("default", help="Config name under configs/."),
@@ -117,6 +126,87 @@ def baseline_cmd(
             f"{row['mape']:.3%}",
             f"{row['dir_acc']:.1%}",
             _fmt_skill(row.get("skill_vs_naive")),
+        )
+    console.print(table)
+
+
+@eval_app.command("chronos")
+def chronos_cmd(
+    config: str = typer.Option("default", help="Config name under configs/."),
+    test_end: str = typer.Option("", help="Override test_end (YYYY-MM-DD)."),
+    methods: str = typer.Option(
+        "univariate,multivariate",
+        help="Comma-separated subset of: univariate, multivariate.",
+    ),
+    output: str = typer.Option(
+        "chronos2.parquet",
+        help="Filename under reports/ablations/.",
+    ),
+) -> None:
+    """Run the Chronos-2 ablation (univariate and/or multivariate with covariates)."""
+    cfg = load_config(config)
+    eval_cfg = cfg["eval"]
+    splits_cfg = eval_cfg["splits"]
+    test_end_value = test_end or splits_cfg["test_end"]
+
+    method_specs: dict[str, dict] = {}
+    method_set = {m.strip() for m in methods.split(",") if m.strip()}
+    if "univariate" in method_set:
+        method_specs["chronos2_univariate"] = {"use_covariates": False}
+    if "multivariate" in method_set:
+        method_specs["chronos2_multivariate"] = {"use_covariates": True}
+    if not method_specs:
+        raise typer.BadParameter(f"No valid methods in {methods!r}")
+
+    ohlcv = cache.read_ohlcv()
+    macro = cache.read_macro()
+    windows = splits.walk_forward_windows(
+        val_end=splits_cfg["val_end"],
+        test_end=test_end_value,
+        horizon_days=eval_cfg["forecast_horizon_days"],
+        step_days=eval_cfg["rolling_step_days"],
+    )
+
+    console.print(
+        f"Running {len(method_specs)} chronos variant(s) "
+        f"({', '.join(method_specs)}) "
+        f"across {len(windows)} windows x {ohlcv['asset'].nunique()} assets "
+        f"(model load takes ~40s the first time)..."
+    )
+
+    from autosignalx.forecast import chronos2
+
+    forecasts = chronos2.batched_ablation(
+        method_specs, ohlcv, macro, windows, eval_cfg["forecast_horizon_days"]
+    )
+    if forecasts.empty:
+        console.print("[yellow]No forecasts produced.[/yellow]")
+        raise typer.Exit(code=1)
+
+    out_path = _ensure_ablations_dir() / output
+    forecasts.to_parquet(out_path, index=False)
+    console.print(f"  wrote {len(forecasts):>7,} forecast rows -> {out_path}")
+
+    overall = harness.summarize(forecasts, by=["method"])
+    table = Table(
+        title="Per-method overall (lower MAE / CRPS = better)",
+        show_lines=False,
+        header_style="bold",
+    )
+    table.add_column("Method", style="cyan")
+    table.add_column("N", justify="right")
+    table.add_column("MAE", justify="right")
+    table.add_column("MAPE", justify="right")
+    table.add_column("Dir-acc", justify="right")
+    table.add_column("CRPS", justify="right")
+    for _, row in overall.iterrows():
+        table.add_row(
+            str(row["method"]),
+            f"{row['n']:,}",
+            f"{row['mae']:.3f}",
+            f"{row['mape']:.3%}",
+            f"{row['dir_acc']:.1%}",
+            _fmt_value(row.get("crps")),
         )
     console.print(table)
 

@@ -78,7 +78,7 @@ def status() -> None:
     table.add_column("Lands in")
 
     layers = [
-        ("L1 Forecasting", "partial (baselines)", "Iter 3 -- chronos-2"),
+        ("L1 Forecasting", "ok (baselines + chronos-2)", "complete in Iter 3"),
         ("L2 Representation", "pending", "Iter 4 -- regime"),
         ("L3 Reasoning", "pending", "Iter 5 -- signal"),
         ("L4 Relational", "pending", "Iter 6 -- graph"),

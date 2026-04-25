@@ -118,9 +118,18 @@ def ablation(
 def summarize(
     forecasts: pd.DataFrame, by: list[str] | None = None
 ) -> pd.DataFrame:
-    """Per-group MAE / MAPE / directional accuracy. Default grouping: (method, asset)."""
+    """Per-group MAE / MAPE / directional accuracy / CRPS.
+
+    CRPS is computed only for methods that supply quantile intervals
+    (lower / upper present and finite); for point-only methods the CRPS
+    column is NaN. Quantile levels assumed: 0.1 (lower), 0.5 (prediction
+    = median), 0.9 (upper)."""
+    import numpy as np
+
     by = by or ["method", "asset"]
     rows: list[dict] = []
+    quantile_levels = np.array([0.1, 0.5, 0.9])
+
     for keys, grp in forecasts.groupby(by, observed=True):
         keys_tup = keys if isinstance(keys, tuple) else (keys,)
         row: dict = dict(zip(by, keys_tup, strict=False))
@@ -132,6 +141,23 @@ def summarize(
             grp["target"].to_numpy(),
             grp["origin_value"].to_numpy(),
         )
+        if "lower" in grp.columns and "upper" in grp.columns:
+            mask = grp["lower"].notna() & grp["upper"].notna()
+            if mask.any():
+                q_array = np.column_stack(
+                    [
+                        grp.loc[mask, "lower"].to_numpy(),
+                        grp.loc[mask, "prediction"].to_numpy(),
+                        grp.loc[mask, "upper"].to_numpy(),
+                    ]
+                )
+                row["crps"] = metrics.crps_from_quantiles(
+                    q_array, quantile_levels, grp.loc[mask, "target"].to_numpy()
+                )
+            else:
+                row["crps"] = float("nan")
+        else:
+            row["crps"] = float("nan")
         rows.append(row)
     return pd.DataFrame(rows)
 

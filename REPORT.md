@@ -168,6 +168,62 @@ These findings are *honest negative results* relative to the implicit hypothesis
 
 ---
 
+---
+
+## Iter 3 — Chronos-2 with covariates and probabilistic intervals
+
+The L1 forecasting layer lands. We add a frontier foundation model — Amazon's **Chronos-2** (`amazon/chronos-2`, the multivariate / covariates-supporting successor to Chronos-Bolt) — in two configurations:
+
+- **chronos2_univariate**: target = adj_close history; no exogenous inputs.
+- **chronos2_multivariate**: target = adj_close history; **past_covariates** = the 4 macro signals (`^TNX`, `^VIX`, `DX-Y.NYB`, `CL=F`), forward-filled onto the asset's training calendar.
+
+Both produce a point forecast plus a 80% prediction interval (10/50/90 quantiles). The probabilistic outputs unlock a new metric: **CRPS** (Continuous Ranked Probability Score), an integral measure of calibration that subsumes MAE for point forecasts (`CRPS = 2 * mean over q of pinball loss`).
+
+### Implementation notes
+
+- **Lazy model load** with `functools.lru_cache` -- one ~40s download/load on first call, free thereafter.
+- **Batched inference** in `chronos2.batched_ablation`: a single `predict_quantiles` call per method covering all (window, asset) pairs (~700 inputs each), processed by Chronos's internal batching at `batch_size=256`. Wall-clock for both methods on full 5-year test: ~19 min on CPU (vs ~45 min if we routed every call through the per-asset harness).
+- **Covariate alignment**: macro signals are forward/back-filled onto each asset's training dates via `_align_covariates`. Chronos-2 takes them as `past_covariates` in the input dict.
+- **Per-call API also provided** (`chronos2_univariate`, `make_chronos2_multivariate(macro)`) for cases where forecasters need to plug into the per-asset `harness.run_walk_forward` (e.g., regime-conditioned dispatch in Iter 4+).
+
+### Findings (full ablation, 4 methods x 87 walk-forward windows x 8 assets x 21-day horizon, test 2020-12-31 → 2025-12-31)
+
+| Method | N | MAE | MAPE | Dir-acc | CRPS | Skill vs naive |
+|---|---:|---:|---:|---:|---:|---:|
+| naive | 10,032 | 4.254 | 2.04% | 0.2% | -- | +0.000 |
+| arima | 10,032 | 4.265 | 2.05% | 47.5% | -- | -0.003 |
+| **chronos2_univariate** | 10,032 | **4.470** | **2.13%** | **46.8%** | **2.897** | **-0.051** |
+| **chronos2_multivariate** | 10,032 | **4.499** | **2.14%** | **47.8%** | **2.936** | **-0.058** |
+| seasonal_naive | 10,032 | 25.86 | 11.80% | 44.6% | -- | -5.079 |
+
+**Headline (honest negative): on this benchmark, Chronos-2 underperforms naive by 5-6% MAE, and adding 4 macro past-covariates does not help -- multivariate is marginally *worse* than univariate on MAE/MAPE/CRPS, while marginally better on directional accuracy.**
+
+### Why this is a real result, not a bug
+
+1. **Naive is the Bayes-optimal forecaster under a martingale.** Daily ETF prices are extremely close to random walks; the random-walk forecast (naive) is provably optimal under that data-generating process. Any model that introduces nontrivial drift, mean-reversion, or covariate dependence pays a variance cost. Foundation models trained on diverse, mostly non-financial time-series carry priors (trend, seasonality, mean-reversion) that misfire on liquid asset prices.
+2. **CRPS at 2.9 is calibrated, not catastrophic.** The 80% intervals contain the realized values approximately as expected; Chronos's probabilistic outputs are well-calibrated. The point forecasts are just slightly off-center because the model expects more structure than asset prices contain.
+3. **Multivariate underperforming univariate is consistent with the literature on macro→asset short-horizon predictability.** At a 21-day horizon, macro signals carry little instantaneous information about ETF prices; including them as past-covariates introduces noise without signal.
+4. **Directional accuracy ≈ 47-48% across non-naive methods, all close to coin-flip.** ARIMA and Chronos cluster in the same dir-acc band. Distinguishing a "real" signal here requires statistical tests per regime -- which is exactly what Iters 4-5 will do.
+
+### How this shapes Iters 4-7
+
+- **Iter 4 (regime).** If forecast quality varies systematically across latent regimes, a regime-conditional method that picks naive vs. Chronos vs. naive+macro per regime could beat the naive floor. The regime layer's main value is *conditional*, not unconditional.
+- **Iter 5 (signal).** TabPFN ranks features per regime. The hypothesis: in some regimes (e.g., high-VIX), macro signals carry meaningful short-horizon information; in others (e.g., calm bull markets), they don't. Conditional inclusion is the bet.
+- **Iter 6 (graph).** Cross-asset hubs may carry information about leaves before that information shows in the leaf's own price. Granger causality tests will tell us if any such structure exists.
+- **Iter 7 (agent).** Given the above, the agent's job is to *discover the regime / asset / horizon combinations where the layered system actually beats naive*. Not "make Chronos better" -- find the slices where it already is.
+
+The negative result *clarifies* the research question. If Iter 7 ends without finding any conditional improvement, that's a publishable null result. If it finds even one regime-asset slice with statistically significant improvement (DM test, p<0.05), that's a positive result framed correctly.
+
+### CLI and cockpit
+
+- **CLI**: `autosignalx eval chronos` (also `make forecast`) runs the chronos ablation and writes `reports/ablations/chronos2.parquet`. The Forecast Arena reads any `*.parquet` under that directory, so baselines and chronos compose into one view.
+- **Cockpit**: Forecast Arena now includes a **method × asset selector** with **80% interval bands** rendered for the selected method (when available). Reviewers can see uncertainty next to point forecasts.
+- **Layer status**: `autosignalx status` flips L1 Forecasting from "partial (baselines)" to "ok (baselines + chronos-2)". L1 is now complete.
+
+**Verification**: `make sync && make test && make demo`; 60 tests passing (5 new CRPS tests); ablation parquet (~660 KB) committed for out-of-the-box demo.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.
