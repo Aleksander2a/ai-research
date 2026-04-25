@@ -187,7 +187,15 @@ def render_forecast_arena() -> None:
 
     st.divider()
     st.subheader("Forecast trajectory")
-    asset_choice = st.selectbox("Asset", sorted(forecasts["asset"].unique()))
+    col_a, col_b = st.columns([1, 1])
+    with col_a:
+        asset_choice = st.selectbox("Asset", sorted(forecasts["asset"].unique()))
+    with col_b:
+        method_choice = st.selectbox(
+            "Method (interval bands shown for the selected method)",
+            sorted(forecasts["method"].unique()),
+        )
+
     asset_forecasts = forecasts[forecasts["asset"] == asset_choice].copy()
     if asset_forecasts.empty:
         st.warning("No forecasts for this asset.")
@@ -201,6 +209,24 @@ def render_forecast_arena() -> None:
     )
     pivot["target"] = target_series
     st.line_chart(pivot, height=400)
+
+    # Uncertainty bands for the selected method (only if it produced intervals)
+    method_data = (
+        asset_forecasts[asset_forecasts["method"] == method_choice]
+        .drop_duplicates("timestamp")
+        .set_index("timestamp")
+        .sort_index()
+    )
+    if "lower" in method_data.columns and method_data["lower"].notna().any():
+        st.caption(
+            f"80% prediction interval for {method_choice} on {asset_choice}"
+        )
+        band = method_data[["lower", "prediction", "upper", "target"]].astype(float)
+        st.line_chart(band, height=300)
+    else:
+        st.caption(
+            f"{method_choice} is a point-only method (no interval bands)."
+        )
 
 
 PANELS = {
