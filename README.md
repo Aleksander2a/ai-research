@@ -8,7 +8,14 @@ This is a research artifact, not a product. The goal is to make scientific disco
 
 ## Status
 
-**Iteration 0** — repository scaffold, packaging, test infrastructure, cockpit shell. Subsequent iterations land on their own branches and merge into the integration branch with `--no-ff` to preserve boundaries in history. See [iteration plan](#iteration-plan) below.
+**All 5 layers complete.** L1 Forecasting (Chronos-2 + baselines), L2 Representation (contrastive encoder + KMeans + HMM), L3 Reasoning (per-regime feature ranking), L4 Relational (GLASSO + Granger + centrality), L5 Agentic (LangGraph + DeepInfra + persistent ledger). See [REPORT.md](REPORT.md) for the full layer-by-layer findings; see [iteration plan](#iteration-plan) below for branch structure.
+
+## Headline findings
+
+- **Foundation models alone don't beat naive on liquid daily ETF prices** -- Chronos-2 underperforms naive by 5-6% MAE; macro covariates don't help unconditionally. 80% intervals are well-calibrated (CRPS ≈ 2.9). This is a calibrated negative result, not a bug -- daily ETF prices are very close to martingales.
+- **Macros dominate every regime's top features for direction prediction, but the dominant macro depends on the regime** -- 10Y yields in Regime 0, dollar index in Regimes 1+3, crude oil in Regime 2. *Conditional* macro selection is the right structure, not unconditional multi-covariate input.
+- **Cross-asset graph reveals typed roles**: SPY is the hub (eigenvector centrality 0.532), GLD is statistically isolated, TLT is the bridge (highest betweenness 0.429). These typed roles become the agent's hypothesis-space inputs.
+- **The live LangGraph agent composes findings from every prior layer** -- by Round 4 it proposes a mechanistic, falsifiable hypothesis: *"in Regime 3 (USD strength + elevated VIX), chronos2_multivariate will outperform naive on EFA because EFA's high betweenness centrality positions it as a bridge between US equity and international markets, allowing the multivariate transformer to encode cross-asset flight-to-quality and USD-transmission dynamics that a random-walk baseline ignores."* The conditional-improvement search opened by Iter 3's negative result.
 
 ## Architecture
 
@@ -58,11 +65,33 @@ make sync
 make demo
 ```
 
+### Reviewer journey (5-minute walk through the cockpit)
+
+The Streamlit cockpit's sidebar lists 8 panels in the order to walk:
+
+1. **Overview** -- thesis, headline findings, layer status grid.
+2. **Data** -- ETF + macro substrate; cache inventory; normalized price chart.
+3. **Forecast Arena** -- 4 methods (naive, ARIMA, Chronos-2 univariate, Chronos-2 multivariate) on walk-forward; per-method overall + per-regime stratified metrics; uncertainty bands per asset.
+4. **Regime Explorer** -- contrastive encoder + KMeans regimes vs Gaussian HMM baseline; PCA-2D scatter colored by regime.
+5. **Signal Discovery Lab** -- per-regime feature importance ranking via permutation importance; cross-regime importance heatmap.
+6. **Cross-Asset Graph** -- partial-correlation matrix, Granger edges, NetworkX centrality (degree / eigenvector / betweenness).
+7. **Agent Console** -- chat-style timeline of the LangGraph agent's research session: propose → experiment → critique → decide, round after round, reading from the recorded live trace.
+8. **Ask the Memory** -- free-form query against the ledger; LLM-answered in live mode, deterministic keyword search in replay mode.
+
 ### LLM provider (optional)
 
-The agentic layer (Iter 7+) uses [DeepInfra](https://deepinfra.com/) (OpenAI-compatible) for open-source LLM inference. Without an API key, the system runs in **deterministic replay mode** — the agent panel plays back pre-recorded traces from `replay/`, so reviewers can experience the full cockpit without provisioning an account.
+The agentic layer (Iter 7+) uses [DeepInfra](https://deepinfra.com/) (OpenAI-compatible) for open-source LLM inference. Without an API key, the system runs in **deterministic replay mode** -- the agent panel plays back pre-recorded traces from `replay/agent_steps.jsonl` (committed to the repo from a live recorded session), so reviewers can experience the full cockpit without provisioning an account.
 
-To use live mode, copy `.env.example` to `.env` and set `DEEPINFRA_API_KEY`.
+To use live mode, copy `.env.example` to `.env` and set:
+
+```bash
+DEEPINFRA_API_KEY=<your key>
+DEEPINFRA_MODEL_PROPOSER=moonshotai/Kimi-K2.6     # or any OpenAI-compatible model on DeepInfra
+DEEPINFRA_MODEL_CRITIC=zai-org/GLM-4.7-Flash
+DEEPINFRA_MODEL_CHAT=deepseek-ai/DeepSeek-V4-Pro
+```
+
+Then `make agent` (or `uv run autosignalx agent run --record-replay`) runs the loop live and appends to the replay file.
 
 ### Windows note
 

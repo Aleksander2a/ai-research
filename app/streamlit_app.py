@@ -38,18 +38,43 @@ def render_overview() -> None:
         """
     )
 
-    st.subheader("Layers")
+    st.success(
+        "**Reviewer journey.** Walk the panels left-to-right in the sidebar: "
+        "**Data** -> **Forecast Arena** -> **Regime Explorer** -> "
+        "**Signal Discovery Lab** -> **Cross-Asset Graph** -> **Agent Console** -> "
+        "**Ask the Memory**. The story builds layer by layer."
+    )
+
+    st.subheader("Layers (all 5 live)")
     layer_specs = [
-        ("L1 Forecasting", "Iter 3", "Chronos-2"),
-        ("L2 Representation", "Iter 4", "Contrastive + KMeans"),
-        ("L3 Reasoning", "Iter 5", "TabPFN"),
-        ("L4 Relational", "Iter 6", "Graph + Granger"),
-        ("L5 Agentic", "Iter 7", "LangGraph + deepagents"),
+        ("L1 Forecasting", "Chronos-2 + baselines", "ok"),
+        ("L2 Representation", "Contrastive + KMeans", "ok"),
+        ("L3 Reasoning", "Per-regime ranking", "ok"),
+        ("L4 Relational", "GLASSO + Granger", "ok"),
+        ("L5 Agentic", "LangGraph + DeepInfra", "ok"),
     ]
     cols = st.columns(len(layer_specs))
-    for col, (name, iter_label, impl) in zip(cols, layer_specs, strict=False):
+    for col, (name, impl, status) in zip(cols, layer_specs, strict=False):
         with col:
-            st.metric(label=name, value=iter_label, delta=impl, delta_color="off")
+            st.metric(label=name, value=status.upper(), delta=impl, delta_color="off")
+
+    st.divider()
+    st.subheader("Headline findings")
+    st.markdown(
+        """
+        - **Iter 3 (negative result, calibrated)**: Chronos-2 underperforms naive on
+          daily ETFs by 5-6% MAE; 80% intervals well-calibrated (CRPS ≈ 2.9). Macro
+          covariates do not help unconditionally.
+        - **Iter 5 (signals)**: Macros dominate every regime's top-5 features for
+          direction prediction, but the **dominant macro depends on the regime**
+          (TNX in Regime 0, DXY in Regimes 1+3, CL=F in Regime 2).
+        - **Iter 6 (graph)**: SPY is the structural hub (eigenvector 0.532); GLD is
+          statistically isolated; TLT is the bridge (highest betweenness 0.429).
+        - **Iter 7 (agent)**: by Round 4 the live agent composes findings from
+          every prior layer into a single mechanistic, falsifiable hypothesis --
+          the conditional-improvement search opened by Iter 3's negative result.
+        """
+    )
 
     st.divider()
     st.subheader("System")
@@ -64,8 +89,7 @@ def render_overview() -> None:
 
     st.divider()
     st.caption(
-        "Pipeline layers register their own panels here as their iterations land. "
-        "See README.md for the iteration plan."
+        "See REPORT.md in the repo for the full layer-by-layer findings narrative."
     )
 
 
