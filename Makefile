@@ -1,4 +1,4 @@
-.PHONY: help sync test lint format demo clean data baseline forecast regime
+.PHONY: help sync test lint format demo clean data baseline forecast regime signal
 
 help:
 	@echo "AutoSignal-X — modular research instrument for predictive structure discovery"
@@ -46,6 +46,9 @@ forecast:
 
 regime:
 	uv run autosignalx regime fit
+
+signal:
+	uv run autosignalx signal rank
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache htmlcov .coverage

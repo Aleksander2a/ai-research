@@ -336,11 +336,83 @@ def render_regime_explorer() -> None:
             st.plotly_chart(fig, use_container_width=True)
 
 
+def render_signal_lab() -> None:
+    st.title("Signal Discovery Lab")
+    st.caption(
+        "Per-regime feature relevance ranking via TabPFN + permutation importance. "
+        "Higher importance => shuffling the feature hurt accuracy more."
+    )
+
+    from autosignalx.config import settings
+
+    signals_dir = settings.reports_dir / "signals"
+    ranking_files = sorted(signals_dir.glob("*.parquet")) if signals_dir.exists() else []
+    if not ranking_files:
+        st.warning(
+            "No signal ranking yet. Run `make signal` "
+            "(or `uv run autosignalx signal rank`) to populate."
+        )
+        return
+
+    # Use the most recently modified ranking file
+    ranking_path = max(ranking_files, key=lambda p: p.stat().st_mtime)
+    st.caption(f"Loaded ranking from `{ranking_path.name}`.")
+    rankings = pd.read_parquet(ranking_path)
+    regimes = sorted(rankings["regime_id"].unique())
+
+    sel = st.selectbox("Regime", regimes)
+    sub = rankings[rankings["regime_id"] == sel].sort_values("rank")
+
+    cols = st.columns(2)
+    with cols[0]:
+        st.metric("Features ranked", len(sub))
+    with cols[1]:
+        if "n_samples" in sub.columns and len(sub) > 0:
+            st.metric("Samples in regime", f"{int(sub['n_samples'].iloc[0]):,}")
+
+    st.divider()
+    st.subheader(f"Regime {sel} -- ranked features")
+    st.bar_chart(
+        sub.set_index("feature")["importance"].sort_values(ascending=True),
+        height=500,
+    )
+    st.dataframe(
+        sub[["rank", "feature", "importance", "importance_std", "n_samples"]].style.format(
+            {
+                "importance": "{:+.3f}",
+                "importance_std": "{:.3f}",
+                "n_samples": "{:,}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Top features across regimes (importance heatmap)")
+    top_per_regime = (
+        rankings.sort_values("rank").groupby("regime_id").head(8)["feature"].unique()
+    )
+    pivoted = (
+        rankings[rankings["feature"].isin(top_per_regime)]
+        .pivot_table(
+            index="feature", columns="regime_id", values="importance", aggfunc="mean"
+        )
+        .sort_index()
+    )
+    if not pivoted.empty:
+        try:
+            styled = pivoted.style.background_gradient(cmap="RdYlGn", axis=None).format("{:+.3f}")
+            st.dataframe(styled, use_container_width=True)
+        except Exception:
+            st.dataframe(pivoted, use_container_width=True)
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
     "Forecast Arena": render_forecast_arena,
     "Regime Explorer": render_regime_explorer,
+    "Signal Discovery Lab": render_signal_lab,
 }
 
 

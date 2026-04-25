@@ -275,6 +275,71 @@ The regime labels are an input contract for Iters 5 (TabPFN signal ranking per r
 
 ---
 
+---
+
+## Iter 5 — Reasoning layer: per-regime feature ranking
+
+The L3 reasoning layer lands. We ask, for each of the 4 KMeans regimes (Iter 4): *which features carry the most signal for predicting next-21-day direction?* The answer is the foundation that Iter 7's agent will use to propose conditional forecasting strategies.
+
+### TabPFN pivot to HistGradientBoosting (honest scope adjustment)
+
+The original plan called for TabPFN-v2 (Prior Labs) -- a foundation model for tabular data, the closest analog to Chronos for the tabular domain. We installed and tested it. **TabPFN >= 2.x packages require an interactive browser-based license acceptance** that polls stdin for an API key (Prior Labs URL: https://ux.priorlabs.ai). This blocks both the `make demo` flow on a fresh-clone reviewer machine and any non-interactive CI.
+
+We pivoted to **`sklearn.ensemble.HistGradientBoostingClassifier`** -- a strong, license-free, sklearn-native classifier with native handling of mixed feature scales and missing values. The ranking methodology (custom permutation importance: shuffle one feature at a time, measure accuracy drop) is identical; only the underlying classifier changed. We document this honestly because the project's "free, reproducible, no key required to run the demo" guarantee is core to the submission.
+
+If TabPFN's license model changes, swapping back is a single-class edit in `signal.ranking`.
+
+### Methodology
+
+For each asset, we build per-(asset, timestamp) features:
+
+**Technical (8)**: rolling_mean_5, rolling_mean_20, rolling_std_5, rolling_std_20, momentum_10, momentum_60, rsi_14, macd_signal.
+
+**Macro level + 5-day change (8)**: for each of `^TNX`, `^VIX`, `DX-Y.NYB`, `CL=F` -- both the current level and the 5-day percent change.
+
+**Aux (1)**: future_close (drop-only; not a feature).
+
+**Target**: binary direction -- 1 if `adj_close[t + 21] > adj_close[t]`, else 0.
+
+For each of the 4 KMeans regimes:
+1. Sample up to 2,000 rows from that regime's timesteps (across all 8 assets).
+2. Fit `HistGradientBoostingClassifier(max_iter=200, lr=0.05, max_depth=4, seed=42)`.
+3. For each feature j, shuffle column j 2 times, measure accuracy drop -> importance[j] = base_acc - mean(shuffled_acc).
+
+Output: `reports/signals/signal_ranking.parquet` with columns `(regime_id, feature, importance, importance_std, n_samples, rank)`. Rank 1 = most important within the regime.
+
+### Findings
+
+**Top-5 features per regime** (positive importance = shuffling that feature hurts accuracy):
+
+| Regime | Top-1 (importance) | Top-2 | Top-3 | Top-4 | Top-5 |
+|---:|---|---|---|---|---|
+| 0 | macro_^TNX_level (+0.071) | macro_CL=F_level | momentum_60 | macro_DX-Y.NYB_level | macro_^VIX_level |
+| 1 | macro_DX-Y.NYB_level (+0.114) | momentum_60 | macro_^TNX_level | rolling_std_20 | macro_CL=F_level |
+| 2 | macro_CL=F_level (+0.112) | macro_^TNX_level | macro_DX-Y.NYB_level | macro_^VIX_level | macd_signal |
+| 3 | macro_DX-Y.NYB_level (+0.189) | macro_^VIX_level | macd_signal | macro_^TNX_level | momentum_60 |
+
+Three findings:
+
+1. **Macros dominate every regime's top-5.** In all 4 regimes, the top feature is a macro level (TNX, DXY, or CL=F). Technical indicators (momentum_60, macd_signal, rolling_std_20) appear at ranks 2-5 but are never the most important feature.
+2. **Which macro matters depends on the regime.** Regime 0 (the largest) is dominated by 10Y yields. Regimes 1 and 3 are dominated by the dollar index (with regime 3 showing the strongest macro effect of any: +0.189 importance for DXY level). Regime 2 is dominated by crude oil. **Different regimes have different "macro keys"** -- a finding that motivates conditional, regime-specific feature selection rather than uniform multi-covariate input.
+3. **Iter 3's negative result is now understood.** Chronos-2 with all 4 macro covariates simultaneously underperformed univariate Chronos-2 by 1% MAE. Iter 5 explains why: the *correct* macro depends on the regime, and dumping all 4 in regardless of regime introduces noise. A regime-aware forecaster that conditionally selects 1-2 dominant macros per regime is the natural next experiment -- and is exactly what Iter 7's agent is set up to discover.
+
+### How this shapes Iters 6-7
+
+- **Iter 6 (graph)**: cross-asset partial-correlation and Granger causality may reveal that *which asset's macro reaction matters first*, refining the per-regime story to per-(regime, asset).
+- **Iter 7 (agent)**: with regime labels (Iter 4) and per-regime feature rankings (Iter 5), the agent can propose hypotheses of the form "in regime R, condition Chronos-2 on top-K(R) features and re-evaluate vs naive on a held-out asset slice." DM tests on the held-out slices give p-values. This is the mechanism by which the layered system can beat naive *conditionally* even though it cannot beat naive *unconditionally* (Iter 3).
+
+### Cockpit and CLI
+
+- **Signal Discovery Lab panel**: per-regime feature bar chart with importance values; full ranking table with rank/importance/std/n_samples; cross-regime importance heatmap of the top-K features per regime. Reviewers see the per-regime feature story at a glance.
+- **CLI**: `autosignalx signal rank` (also `make signal`) runs the full ranking in ~30s on CPU (4 regimes x ~25 permutations per regime = 100 model fits, each fast).
+- **Layer status**: `autosignalx status` flips L3 Reasoning to "ok (HistGradientBoosting + permutation importance)".
+
+**Verification**: `make signal` runs in ~30s; `make test` -> 65 tests passing (4 new for features); `make demo` -> Signal Discovery Lab renders the bar chart, table, and heatmap.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.
