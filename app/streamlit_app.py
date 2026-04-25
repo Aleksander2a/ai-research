@@ -407,12 +407,81 @@ def render_signal_lab() -> None:
             st.dataframe(pivoted, use_container_width=True)
 
 
+def render_cross_asset_graph() -> None:
+    st.title("Cross-Asset Graph")
+    st.caption(
+        "Direct (partial) correlations and Granger-causal edges between ETFs. "
+        "Hubs (high eigenvector centrality) are assets whose moves propagate widely."
+    )
+
+    from autosignalx.config import settings
+
+    graph_dir = settings.reports_dir / "graph"
+    if not graph_dir.exists() or not (graph_dir / "edges.parquet").exists():
+        st.warning(
+            "No graph yet. Run `make graph` (or `uv run autosignalx graph build`)."
+        )
+        return
+
+    edges = pd.read_parquet(graph_dir / "edges.parquet")
+    cent_path = graph_dir / "centrality.parquet"
+    cent = pd.read_parquet(cent_path) if cent_path.exists() else None
+
+    pcorr = edges[edges["edge_type"] == "partial_corr"]
+    granger = edges[edges["edge_type"] == "granger"]
+
+    cols = st.columns(3)
+    cols[0].metric("Partial-corr edges", len(pcorr))
+    cols[1].metric("Granger edges", len(granger))
+    cols[2].metric("Nodes", cent["node"].nunique() if cent is not None else "-")
+
+    if cent is not None:
+        st.divider()
+        st.subheader("Centrality (sorted by eigenvector centrality)")
+        st.dataframe(
+            cent.style.format(
+                {
+                    "degree_centrality": "{:.3f}",
+                    "eigenvector_centrality": "{:.3f}",
+                    "betweenness_centrality": "{:.3f}",
+                }
+            ),
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.subheader("Partial-correlation matrix")
+    if not pcorr.empty:
+        nodes = sorted(set(pcorr["source"]).union(pcorr["target"]))
+        mat = pd.DataFrame(0.0, index=nodes, columns=nodes)
+        for _, row in pcorr.iterrows():
+            mat.at[row["source"], row["target"]] = row["weight"]
+            mat.at[row["target"], row["source"]] = row["weight"]
+        try:
+            styled = mat.style.background_gradient(cmap="RdBu_r", axis=None, vmin=-1, vmax=1).format("{:+.2f}")
+            st.dataframe(styled, use_container_width=True)
+        except Exception:
+            st.dataframe(mat, use_container_width=True)
+
+    if not granger.empty:
+        st.divider()
+        st.subheader("Top Granger-causal edges (lower p = stronger)")
+        top = granger.sort_values("p_value").head(20)
+        st.dataframe(
+            top[["source", "target", "best_lag", "p_value", "weight"]].style.format(
+                {"p_value": "{:.4f}", "weight": "{:.2f}"}
+            ),
+            use_container_width=True,
+        )
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
     "Forecast Arena": render_forecast_arena,
     "Regime Explorer": render_regime_explorer,
     "Signal Discovery Lab": render_signal_lab,
+    "Cross-Asset Graph": render_cross_asset_graph,
 }
 
 

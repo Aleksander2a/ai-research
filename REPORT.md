@@ -340,6 +340,61 @@ Three findings:
 
 ---
 
+---
+
+## Iter 6 — Relational layer: cross-asset graph
+
+The L4 relational layer lands. Two complementary views of the cross-asset structure:
+
+- **GLASSO partial-correlation graph (undirected)**: `sklearn.covariance.GraphicalLassoCV` fits a sparse precision matrix; off-diagonals (after normalization) are partial correlations. Edges are *direct* statistical relationships after controlling for all other assets in the panel -- a sharper signal than raw Pearson correlations.
+- **Granger-causality edges (directed)**: for each ordered pair (X, Y), `statsmodels.tsa.stattools.grangercausalitytests` tests whether lags of X predict Y beyond Y's own lags, at lags 1..5. Pairs with min p-value < 0.05 emit a directed edge with weight `-log10(p)`.
+
+NetworkX-based **centrality** (degree, eigenvector, betweenness) is computed on the partial-correlation graph (treating it as undirected with absolute weights).
+
+### Initial build (8 ETFs, daily returns, 2010-2025)
+
+- **18 partial-correlation edges** (out of 28 possible undirected pairs -- 64% density, reflecting the broad co-movement of US-listed liquid ETFs).
+- **42 Granger edges** at p < 0.05 (out of 56 possible ordered pairs -- 75% density). Many edges are likely consequences of correlated noise rather than causal information flow; in equity-style returns, common-factor exposure causes Granger tests to fire even when no economic causality exists. We treat Granger here as descriptive ranking rather than causal claim.
+- Build time ~29s on CPU.
+
+### Centrality (eigenvector ranking)
+
+| Node | Degree | Eigenvector | Betweenness | Notes |
+|---|---:|---:|---:|---|
+| SPY | 0.857 | **0.532** | 0.143 | Broad market hub |
+| EFA | 0.857 | 0.422 | 0.333 | International developed |
+| QQQ | 0.714 | 0.414 | 0.143 | Tech-heavy US |
+| IWM | 0.714 | 0.394 | 0.000 | Small-cap US |
+| EEM | 0.714 | 0.351 | 0.048 | Emerging markets |
+| HYG | 0.714 | 0.297 | 0.000 | High-yield credit |
+| TLT | 0.429 | 0.036 | **0.429** | **Bridge -- long bonds** |
+| GLD | 0.143 | 0.001 | 0.000 | Near-isolated diversifier |
+
+Three findings:
+
+1. **SPY is the structural hub.** Highest eigenvector centrality and tied for highest degree -- consistent with SPY's role as the broad-market reference. Forecasting models that condition on SPY's behavior are likely to inherit information about most other ETFs in the panel.
+2. **Gold is statistically isolated.** GLD has degree 0.143 (only 1 partial-correlation edge among 7 possible) and eigenvector centrality essentially 0. This confirms the textbook "uncorrelated diversifier" role of gold and also provides a methodological check: if our partial-corr inference were noisy, GLD would not isolate so cleanly.
+3. **TLT is a low-degree bridge.** Long bonds have low degree (0.429) but the *highest* betweenness (0.429 -- nearly tied with EFA). This means TLT lies on many shortest paths between other assets despite few direct connections -- it bridges equity assets to a different regime of the panel. Operationally: shocks transmitted through bond markets pass through TLT.
+
+### How this shapes Iter 7
+
+The agent now has three new typed inputs to compose hypotheses over:
+- **Hubs (high eigenvector)** -- candidates for primary forecasting targets whose state propagates.
+- **Bridges (high betweenness)** -- candidates for *features* that carry cross-asset regime-transition information.
+- **Isolates (low centrality)** -- candidates for portfolio diversifiers; uninformative as features for predicting other assets.
+
+Combined with regime labels (Iter 4) and per-regime feature rankings (Iter 5), the agent's hypothesis space becomes: *"in regime R, forecast asset A using top-K(R) macros plus the centrality-weighted moves of nearby (graph-adjacent) assets."*
+
+### Cockpit and CLI
+
+- **Cross-Asset Graph panel**: edge counts; centrality table sorted by eigenvector; partial-correlation matrix rendered as a diverging colormap (RdBu); top-20 Granger edges by p-value.
+- **CLI**: `autosignalx graph build` (also `make graph`) runs in ~30s; `autosignalx graph status` lists cached artifacts.
+- **Layer status**: `autosignalx status` flips L4 Relational to "ok (GLASSO + Granger + centrality)".
+
+**Verification**: `make graph` runs in ~30s; `make test` -> 70 tests passing (5 new for graph layer); `make demo` -> Cross-Asset Graph panel renders centrality + partial-corr heatmap + Granger table.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.
