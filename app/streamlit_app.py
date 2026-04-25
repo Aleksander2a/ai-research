@@ -668,6 +668,27 @@ def render_trace_quality_chart() -> None:
     )
 
 
+def render_lessons() -> None:
+    st.title("Lessons & Memory")
+    st.caption(
+        "The long-horizon memory cell. After each session, the agent "
+        "consolidates the ledger + promoted findings into a Markdown "
+        "'lessons' section that the next session reads as context. "
+        "(Run `autosignalx agent consolidate` to update.)"
+    )
+
+    from autosignalx.agent import memory as memory_mod
+
+    text = memory_mod.load_lessons(max_chars=20000)
+    if not text:
+        st.info(
+            "No lessons recorded yet. After a session, run "
+            "`autosignalx agent consolidate` to summarize and persist."
+        )
+        return
+    st.markdown(text)
+
+
 def render_findings() -> None:
     st.title("Findings")
     st.caption(
@@ -826,6 +847,7 @@ PANELS = {
     "Agent Console": render_agent_console,
     "Findings": render_findings,
     "Lineage": render_lineage,
+    "Lessons & Memory": render_lessons,
     "Ask the Memory": render_ask_the_memory,
 }
 

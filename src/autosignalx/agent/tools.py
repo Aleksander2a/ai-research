@@ -194,7 +194,12 @@ def get_centrality_summary() -> dict[str, dict[str, float]]:
 
 def context_snapshot() -> dict[str, Any]:
     """Compact snapshot of all available artifact summaries -- used to
-    seed the agent's prompts at the start of a run."""
+    seed the agent's prompts at the start of a run.
+
+    Includes the long-horizon ``lessons.md`` (Iter 16) when present so
+    each new session's first round is informed by prior sessions."""
+    from autosignalx.agent import memory as memory_mod
+
     return {
         "methods": list_methods(),
         "assets": list_assets(),
@@ -204,6 +209,7 @@ def context_snapshot() -> dict[str, Any]:
         },
         "centrality": get_centrality_summary(),
         "overall_metrics": slice_forecasts().get("per_method", []),
+        "prior_sessions_lessons": memory_mod.load_lessons(max_chars=4000),
     }
 
 

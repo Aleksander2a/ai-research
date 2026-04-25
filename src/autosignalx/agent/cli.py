@@ -74,6 +74,21 @@ def run_cmd(
     console.print(table)
 
 
+@agent_app.command("consolidate")
+def consolidate_cmd(
+    session_id: str = typer.Option(
+        "current", help="Session ID for the lessons section header."
+    ),
+) -> None:
+    """Consolidate the current ledger + findings into a Markdown lessons
+    section, appended to reports/agent/lessons.md."""
+    from autosignalx.agent import memory as memory_mod
+
+    path, section = memory_mod.consolidate_and_append(session_id=session_id)
+    console.print(f"Wrote {len(section)} chars to {path}")
+    console.print(section[:600] + ("..." if len(section) > 600 else ""))
+
+
 @agent_app.command("score-traces")
 def score_traces_cmd(
     session_id: str = typer.Option(

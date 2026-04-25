@@ -21,6 +21,7 @@ from autosignalx.agent import (  # noqa: F401
     ledger,
     lineage,
     llm,
+    memory,
     prompts,
     specs,
     state,

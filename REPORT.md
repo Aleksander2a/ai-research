@@ -815,3 +815,55 @@ The trace quality chart over a long recorded session is one of the strongest vis
 - Long entry content is truncated in the round summary.
 
 Suite total: 117 passing. Reference: `openevals.create_llm_as_judge` and `agentevals` trajectory evaluation -- the same conceptual pattern, routed through our DeepInfra provider abstraction.
+
+---
+
+## Iter 16 — Long-horizon memory consolidation
+
+The agent's ledger grows linearly with rounds. Across many sessions, that ledger becomes too large to stuff into a context window — and most of the round-level detail isn't useful to a future session anyway. Iter 16 introduces **memory consolidation**: at the end of a session, an LLM compresses the ledger + findings into a structured Markdown **lessons** section that gets appended to `reports/agent/lessons.md`. The next session reads the most recent lessons as additional context, so the agent's first round of session N is informed by sessions 1..N-1.
+
+This is the long-horizon memory cell Deeter explicitly asks for: unbounded growing context, periodically summarized into a structured form the agent can re-consume.
+
+### Consolidation prompt
+
+`agent/memory.py` `CONSOLIDATOR_SYSTEM` enforces a strict Markdown structure (under 350 words per section):
+
+```markdown
+## Session <id> -- <date>
+
+**What was tried**: 1-3 sentences naming (regime, asset, method) combinations.
+**What worked**: promoted findings by ID, or "(none)".
+**What was refuted**: hypotheses with refute verdicts, or "(none)".
+**Patterns observed**: 1-2 sentences on cross-cutting insights.
+**Open directions for next session**: 1-3 specific slices to explore.
+```
+
+### API
+
+- **`consolidate(session_id, ledger_entries, finding_records, provider)`** — runs the consolidator LLM (defaults to the `adjudicator` role for decisive summaries) and returns the Markdown section.
+- **`append_to_lessons(section)`** — appends to `reports/agent/lessons.md` with a `---` separator.
+- **`load_lessons(max_chars)`** — reads the doc, capped at `max_chars` (tail-truncated to keep section breaks intact). Cap defaults to 8000 chars; the snapshot in `tools.context_snapshot()` uses 4000.
+- **`consolidate_and_append(session_id, ...)`** — convenience for end-of-session use.
+
+### Cross-session continuity
+
+`agent/tools.py` `context_snapshot()` now includes a `prior_sessions_lessons` field. When the agent starts a new session, the proposer / theorist sees the lessons doc in its context — open directions become natural seeds for the first round, refuted hypotheses are not re-proposed.
+
+### CLI and cockpit
+
+- **CLI**: `autosignalx agent consolidate [--session-id <id>]` runs the consolidation manually after a session.
+- **Cockpit**: the **"Lessons & Memory"** panel (renamed from "Memory" placeholder, sits between Lineage and Ask the Memory) renders the lessons doc as Markdown. Reviewers see the agent's accumulated knowledge as a readable narrative, not a JSON dump.
+
+### Why this matters
+
+Without consolidation, sessions are independent. With it, the agent's productivity compounds — each session starts further along than the last. Combined with the Findings store (Iter 11), an agent run on day 30 of operation has accumulated 29 days of summarized context plus a structured store of every promoted finding. That's the offline-to-deployable axis Deeter cares about.
+
+### Tests (5 new)
+
+- `load_lessons` returns empty string when no doc exists.
+- Append + load round-trip preserves both sessions and adds separators.
+- `load_lessons(max_chars)` truncates and prepends a marker.
+- `consolidate` with replay provider returns the canned section.
+- `consolidate_and_append` persists to disk and the file contains the section.
+
+Suite total: 122 passing.
