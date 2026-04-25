@@ -25,6 +25,7 @@ from autosignalx.agent import (  # noqa: F401
     specs,
     state,
     tools,
+    trace_eval,
 )
 from autosignalx.agent.graph import build_agent_graph, run  # noqa: F401
 from autosignalx.agent.ledger import append, clear, load, summarize_for_prompt  # noqa: F401

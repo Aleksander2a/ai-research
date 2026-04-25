@@ -567,6 +567,9 @@ def render_agent_console() -> None:
             else:
                 st.write(content)
 
+    st.divider()
+    render_trace_quality_chart()
+
 
 def render_ask_the_memory() -> None:
     st.title("Ask the Memory")
@@ -645,6 +648,24 @@ def render_ask_the_memory() -> None:
 
     st.session_state.memory_history.append((question, answer))
     st.rerun()
+
+
+def render_trace_quality_chart() -> None:
+    """Sub-renderer used by Agent Console to show quality trends per session."""
+    from autosignalx.agent import trace_eval
+
+    rows = trace_eval.load()
+    if not rows:
+        return
+    st.subheader("Trace quality over rounds (LLM-as-judge, 1-5)")
+    df = pd.DataFrame(rows)
+    df = df[["round", "clarity", "novelty", "falsifiability", "evidence_citing"]].copy()
+    df = df.set_index("round")
+    st.line_chart(df, height=250)
+    st.caption(
+        "Higher = better. Run `autosignalx agent score-traces` after each "
+        "session to refresh."
+    )
 
 
 def render_findings() -> None:
