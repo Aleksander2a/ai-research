@@ -28,6 +28,12 @@ dependencies = [
     "scikit-learn>=1.4",
     "hmmlearn>=0.3",
     "networkx>=3.0",
+    "langgraph>=0.2",
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "deepagents>=0.5",
+    "openevals>=0.2",
+    "agentevals>=0.0.9",
 ]
 
 [project.optional-dependencies]

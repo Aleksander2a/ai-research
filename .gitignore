@@ -228,3 +228,6 @@ reports/runs/
 # Claude Code — local state (allow future shared .claude/settings.json or skills)
 .claude/settings.local.json
 .claude/worktrees/
+
+# Agent LLM response cache (large; deterministic from the recorded replay file)
+reports/agent/llm_cache/

@@ -1,0 +1,76 @@
+"""CLI subcommand for the agentic layer."""
+
+from __future__ import annotations
+
+import json
+
+import typer
+from rich.console import Console
+from rich.table import Table
+
+from autosignalx.agent import graph, ledger
+from autosignalx.config import settings
+
+agent_app = typer.Typer(
+    name="agent",
+    help="Agentic research loop -- LangGraph state machine + persistent ledger.",
+    no_args_is_help=True,
+)
+console = Console()
+
+
+@agent_app.command("run")
+def run_cmd(
+    max_rounds: int = typer.Option(5, help="Number of propose/critique/experiment rounds."),
+    seed: int = typer.Option(42, help="Random seed."),
+    fresh: bool = typer.Option(False, help="Wipe the ledger before starting."),
+    record_replay: bool = typer.Option(
+        False, help="Append live LLM responses to replay/agent_steps.jsonl."
+    ),
+) -> None:
+    """Run the agent's research loop for ``max_rounds`` rounds.
+
+    In live mode (DEEPINFRA_API_KEY set, AUTOSIGNALX_REPLAY != true) the
+    agent uses DeepInfra-hosted open-source LLMs. In replay mode the agent
+    plays back recorded responses from replay/agent_steps.jsonl, falling
+    back to deterministic plausible responses if the file is incomplete.
+    Either way, the experiment step is deterministic (slices cached
+    forecasts) and the ledger captures every step."""
+    if fresh:
+        ledger.clear()
+        console.print("Ledger cleared.")
+
+    mode = "replay" if settings.use_replay else "live"
+    console.print(
+        f"Starting agent loop ({max_rounds} rounds, mode={mode}, "
+        f"record_replay={record_replay})..."
+    )
+    entries = graph.run(
+        max_rounds=max_rounds, seed=seed, record_replay=record_replay
+    )
+    console.print(f"Agent finished. Ledger now has {len(entries)} entries.")
+
+    table = Table(title="Agent ledger summary", header_style="bold")
+    table.add_column("Round", justify="right")
+    table.add_column("Step", style="cyan")
+    table.add_column("Content (head)", overflow="fold")
+    for e in entries[-min(20, len(entries)) :]:
+        c = e.get("content", "")
+        c_str = (
+            json.dumps(c, default=str)[:120] if isinstance(c, dict) else str(c)[:120]
+        )
+        table.add_row(str(e.get("round", "")), str(e.get("step", "")), c_str)
+    console.print(table)
+
+
+@agent_app.command("status")
+def status_cmd() -> None:
+    """Print ledger size and last-round summary."""
+    entries = ledger.load()
+    console.print(f"Ledger entries: {len(entries)}")
+    if not entries:
+        return
+    last_round = max(e.get("round", 0) for e in entries)
+    console.print(f"Last round: {last_round}")
+    p = settings.reports_dir / "agent" / "ledger.jsonl"
+    console.print(f"Path: {p}")

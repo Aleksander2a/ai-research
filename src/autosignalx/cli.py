@@ -13,6 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 from autosignalx import __version__
+from autosignalx.agent.cli import agent_app
 from autosignalx.config import settings
 from autosignalx.data.cli import data_app
 from autosignalx.eval.cli import eval_app
@@ -30,6 +31,7 @@ app.add_typer(eval_app, name="eval")
 app.add_typer(regime_app, name="regime")
 app.add_typer(signal_app, name="signal")
 app.add_typer(graph_app, name="graph")
+app.add_typer(agent_app, name="agent")
 console = Console()
 
 
@@ -88,7 +90,7 @@ def status() -> None:
         ("L2 Representation", "ok (contrastive + KMeans + HMM)", "complete in Iter 4"),
         ("L3 Reasoning", "ok (TabPFN + permutation importance)", "complete in Iter 5"),
         ("L4 Relational", "ok (GLASSO + Granger + centrality)", "complete in Iter 6"),
-        ("L5 Agentic", "pending", "Iter 7 -- agent"),
+        ("L5 Agentic", "ok (LangGraph + DeepInfra + ledger)", "complete in Iter 7"),
     ]
     for name, status_, lands_in in layers:
         table.add_row(name, status_, lands_in)
