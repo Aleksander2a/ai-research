@@ -45,6 +45,41 @@ Repository structure, packaging, test infrastructure, Streamlit cockpit shell. N
 
 ---
 
+---
+
+## Iter 1 — Data pipeline
+
+Reproducible market-data substrate for every subsequent layer.
+
+**Sources** (all free, all reproducible):
+- ETF OHLCV via yfinance: SPY, QQQ, IWM, GLD, TLT, EFA, EEM, HYG.
+- Macro signals via yfinance: ^TNX (10Y yield), ^VIX, DX-Y.NYB (DXY), CL=F (crude).
+- Window: 2010-01-01 to 2025-12-31, daily frequency.
+
+**Schema contract**. Long-format DataFrames with strict columns, asserted at every cache write.
+- OHLCV: `(timestamp, asset, open, high, low, close, adj_close, volume, returns)`.
+- Macro: `(timestamp, signal, value)`.
+
+The contract is the API every model layer reads against. Schema enforcement at the persistence boundary keeps corrupt data out of the eval harness.
+
+**Walk-forward splits**. `WalkForwardWindow` enforces `train_end < forecast_start` at construction (raises `ValueError` with "Leakage" in the message if violated). `walk_forward_windows(val_end, test_end, horizon_days, step_days)` yields a list of windows that progressively advance the training-set boundary by `step_days` each iteration; no future data ever leaks into a training window.
+
+**Default split** (configs/default.yaml): train [2010-01-01, 2018-12-31], val (2018-12-31, 2020-12-31], test (2020-12-31, 2025-12-31]. The test period spans COVID, the 2022 inflation shock, and the ZIRP-to-hike transition -- the regime layer (Iter 4) and stratified eval (Iter 5+) will have genuinely distinct regimes to discover.
+
+**Tests** (16 new, 25 total):
+- Schema tests (`test_data_schema.py`): valid frames pass; missing columns raise; non-monotonic timestamps raise; multi-asset frames where each asset is locally monotonic pass.
+- Leakage tests (`test_no_leakage.py`): `WalkForwardWindow` rejects `train_end >= forecast_start`; `walk_forward_windows` produces strictly advancing windows that respect `test_end`; `StaticSplit` enforces strict ordering and produces disjoint, complete slices.
+
+These tests are the contract that keeps the project honest as ML layers land.
+
+**Cockpit**. New "Data" panel renders cache inventory, normalized adjusted-close trajectories (one line per asset), and macro signal series. The Overview panel still answers "what is this?"; the Data panel answers "what is it built on?".
+
+**CLI**. `autosignalx data fetch` (also via `make data`) populates the parquet cache. `autosignalx data status` (and the global `autosignalx status`) report what's cached.
+
+**Verification**: `make data` populates the cache; `make test` runs all 25 tests green; `make demo` opens the cockpit with both Overview and Data panels live.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.

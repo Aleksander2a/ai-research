@@ -8,7 +8,9 @@ installed venv."""
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
+import yaml
 from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -57,3 +59,15 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def load_config(name: str = "default") -> dict[str, Any]:
+    """Load a YAML experiment config from configs/<name>.yaml.
+
+    Per-layer CLI subcommands use this to source their hyperparameters
+    from a single source of truth (configs/default.yaml by default)."""
+    path = settings.configs_dir / f"{name}.yaml"
+    if not path.exists():
+        raise FileNotFoundError(f"Config not found: {path}")
+    with path.open("r", encoding="utf-8") as f:
+        return yaml.safe_load(f)
