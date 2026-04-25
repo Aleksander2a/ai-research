@@ -1,4 +1,4 @@
-.PHONY: help sync test lint format demo clean
+.PHONY: help sync test lint format demo clean data
 
 help:
 	@echo "AutoSignal-X — modular research instrument for predictive structure discovery"
@@ -32,6 +32,11 @@ format:
 
 demo:
 	uv run streamlit run app/streamlit_app.py
+
+# --- pipeline targets (added per iteration) ---
+
+data:
+	uv run autosignalx data fetch
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache htmlcov .coverage

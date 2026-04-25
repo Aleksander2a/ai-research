@@ -5,6 +5,7 @@ done and what it has discovered. Panels light up as their iterations land."""
 
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 
 from autosignalx import __version__
@@ -66,8 +67,66 @@ def render_overview() -> None:
     )
 
 
+def render_data() -> None:
+    st.title("Data")
+    st.caption("ETF OHLCV and macro signal cache backing every experiment.")
+
+    try:
+        from autosignalx.data import cache, loader
+    except ImportError as e:
+        st.error(f"Data layer not available: {e}")
+        return
+
+    info = cache.cache_status()
+    if not info["ohlcv"].get("exists"):
+        st.warning(
+            "No data cached yet. Run `make data` (or `uv run autosignalx data fetch`) "
+            "to populate the cache."
+        )
+        return
+
+    cols = st.columns(2)
+    with cols[0]:
+        st.metric("OHLCV rows", f"{info['ohlcv']['rows']:,}")
+        st.caption(
+            f"{info['ohlcv'].get('earliest')} -> {info['ohlcv'].get('latest')}"
+        )
+    with cols[1]:
+        if info["macro"].get("exists"):
+            st.metric("Macro rows", f"{info['macro']['rows']:,}")
+            st.caption(
+                f"{info['macro'].get('earliest')} -> {info['macro'].get('latest')}"
+            )
+        else:
+            st.metric("Macro rows", "0")
+            st.caption("Macro cache empty.")
+
+    st.divider()
+    st.subheader("Adjusted close (normalized to 100 at start of cache)")
+    try:
+        prices = loader.load_close_wide().dropna(how="all")
+        if not prices.empty:
+            base = prices.iloc[0].replace(0, pd.NA)
+            normalized = prices.divide(base) * 100
+            st.line_chart(normalized, height=400)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not render prices: {e}")
+
+    st.divider()
+    st.subheader("Macro signals")
+    try:
+        macro_w = loader.load_macro_wide().dropna(how="all")
+        if not macro_w.empty:
+            st.line_chart(macro_w, height=300)
+    except FileNotFoundError:
+        st.caption("Macro cache empty.")
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not render macro: {e}")
+
+
 PANELS = {
     "Overview": render_overview,
+    "Data": render_data,
 }
 
 
