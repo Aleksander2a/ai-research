@@ -488,6 +488,31 @@ This is the pattern the agent is designed to discover: **conditional improvement
 
 ---
 
+## Iter 8 — Cockpit polish: reviewer-journey navigation
+
+The five model layers all landed in Iter 7. Iter 8 is a polish pass that makes the 5-minute reviewer walk through the cockpit land cleanly, with no model or algorithmic changes.
+
+### Cockpit (`app/streamlit_app.py`)
+
+- **Reviewer-journey callout** added to the Overview panel: a green success box at the top points reviewers to the panel walk order (Data → Forecast Arena → Regime Explorer → Signal Discovery Lab → Cross-Asset Graph → Agent Console → Ask the Memory). The story builds layer-by-layer; the callout makes that sequence explicit instead of leaving reviewers to discover it.
+- **Layer status grid** in Overview replaces the previous "Iter N" labels with concrete implementation summaries ("Chronos-2 + baselines", "Contrastive + KMeans", "Per-regime ranking", "GLASSO + Granger", "LangGraph + DeepInfra") and an OK status — all five layers shown live.
+- **Headline findings section** added to Overview, surfacing the four most important findings (Iter 3 calibrated negative result, Iter 5 conditional macros, Iter 6 graph roles, Iter 7 agent compositionality) before reviewers dive into individual panels. This lets a 30-second skim still leave with the key takeaways.
+
+### README
+
+- **Status** flipped from "Iteration 0 — repository scaffold" to "All 5 layers complete" with a one-line summary of each layer's implementation.
+- **Headline findings** section mirrors the cockpit's headline panel — same four findings, same framing.
+- **Reviewer journey (5-minute walk)** subsection enumerates the panels in walk order with a one-line "what you see" description per panel.
+- **LLM provider** section expanded with the actual model identifiers used to record the live trace (`moonshotai/Kimi-K2.6` / `zai-org/GLM-4.7-Flash` / `deepseek-ai/DeepSeek-V4-Pro`), so reviewers can swap in their own preferences via env without guessing what's expected.
+
+### Why this is its own iteration
+
+The polish is small in code (66 lines across 2 files, single commit) but high-leverage in reviewer experience: reviewers who skim now get the headline in 30 seconds and the panel walk order without thinking. Keeping it as its own iteration boundary in git history (`iter-8-cockpit` merge commit) signals that polish is a deliberate engineering step, not noise tacked onto the agent iter.
+
+**Verification**: 76 tests still passing, ruff clean, `make demo` shows the Reviewer Journey callout + headline findings on first paint of the Overview panel.
+
+---
+
 ## Iter 9 — Consolidation, reproducibility, future work
 
 The five model layers are live, the cockpit shows them coherently, and the findings story is honest. This iteration consolidates the report (executive summary at top), and verifies that the submission stands up as a piece of research artifact rather than a code dump.
