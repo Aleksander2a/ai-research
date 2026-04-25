@@ -1,7 +1,21 @@
-"""Agentic layer (L5) — LangGraph state machine using the deepagents pattern.
+"""Agentic layer (L5) -- LangGraph state machine + persistent ledger.
 
-Implementation lands in **Iter 7**. The agent reads the experiment ledger,
-proposes hypotheses, runs experiments via the eval harness, critiques its
-own results, and decides what to try next. The ledger is the system's
-persistent memory; it is also exposed via an "Ask the Memory" panel in
-the cockpit. See README for the iteration plan."""
+Public API:
+- ``state.AgentState`` -- TypedDict for the LangGraph state
+- ``ledger.append(entry)`` / ``load()`` / ``clear()`` -- persistent JSONL memory
+- ``tools.slice_forecasts(method, asset, regime_id)`` -- the agent's primary
+  experiment tool
+- ``tools.context_snapshot()`` -- compact snapshot of all artifact summaries
+- ``llm.get_provider(record_replay)`` -- LiveProvider (DeepInfra) or
+  ReplayProvider (no-key fallback)
+- ``graph.build_agent_graph(provider)`` -- compiles the LangGraph
+- ``graph.run(max_rounds, seed, record_replay)`` -- runs the loop end-to-end
+
+The ledger is the persistent memory cell. The cockpit's 'Ask the Memory'
+panel reads from it to answer questions about past agent reasoning."""
+
+from autosignalx.agent import graph, ledger, llm, prompts, state, tools  # noqa: F401
+from autosignalx.agent.graph import build_agent_graph, run  # noqa: F401
+from autosignalx.agent.ledger import append, clear, load, summarize_for_prompt  # noqa: F401
+from autosignalx.agent.llm import LiveProvider, ReplayProvider, get_provider  # noqa: F401
+from autosignalx.agent.tools import context_snapshot, slice_forecasts  # noqa: F401
