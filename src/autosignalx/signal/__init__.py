@@ -1,4 +1,5 @@
-"""Reasoning layer (L3) -- feature engineering + TabPFN per-regime ranking.
+"""Reasoning layer (L3) -- feature engineering + per-regime feature ranking
+via HistGradientBoosting + permutation importance.
 
 Public API:
 - ``features.build_features_target(asset_ohlcv, macro_wide, horizon_days)``

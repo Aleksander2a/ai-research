@@ -1,8 +1,9 @@
 """CLI subcommand for the signal layer.
 
 ``autosignalx signal rank`` builds features for every asset, joins regime
-labels, fits TabPFN per regime, and ranks features by permutation
-importance. Output: ``reports/signals/tabpfn_ranking.parquet``."""
+labels, fits a HistGradientBoosting classifier per regime, and ranks
+features by permutation importance. Output:
+``reports/signals/signal_ranking.parquet``."""
 
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from autosignalx.signal import features, ranking
 
 signal_app = typer.Typer(
     name="signal",
-    help="Signal discovery -- TabPFN per-regime feature ranking.",
+    help="Signal discovery -- per-regime feature ranking (HistGradientBoosting + permutation importance).",
     no_args_is_help=True,
 )
 console = Console()
@@ -37,7 +38,7 @@ def rank_cmd(
         "signal_ranking.parquet", help="Filename under reports/signals/."
     ),
 ) -> None:
-    """Rank features per regime via TabPFN + permutation importance."""
+    """Rank features per regime via HistGradientBoosting + permutation importance."""
     load_config(config)  # validate config exists
     SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
 

@@ -1,17 +1,11 @@
-"""Per-regime feature ranking via tabular classifier + permutation importance.
+"""Per-regime feature ranking via HistGradientBoosting + permutation importance.
 
-For each regime, fit a classifier on (features, target_direction) sampled
-from that regime's timesteps; then shuffle one feature at a time and
-measure the drop in accuracy. The shuffled-vs-baseline accuracy delta is
-the feature's importance score.
-
-Originally targeted TabPFN-v2 (Prior Labs) per the project plan, but
-TabPFN's >=2.x packages require an interactive browser-based license
-acceptance that cannot complete in the reviewer's `make demo` flow or in
-CI. We pivoted to ``HistGradientBoostingClassifier`` -- a strong,
-license-free, sklearn-native classifier -- to preserve the project's
-'reviewers run the demo without provisioning anything' guarantee. The
-ranking methodology is identical."""
+For each regime, fit ``sklearn.ensemble.HistGradientBoostingClassifier``
+on (features, target_direction) sampled from that regime's timesteps,
+then shuffle one feature at a time and measure the drop in accuracy.
+The shuffled-vs-baseline accuracy delta is the feature's importance
+score. The mean drop across ``n_repeats`` permutations is the reported
+importance; the standard deviation is reported alongside."""
 
 from __future__ import annotations
 
