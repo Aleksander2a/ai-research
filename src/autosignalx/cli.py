@@ -88,7 +88,7 @@ def status() -> None:
     layers = [
         ("L1 Forecasting", "ok (baselines + chronos-2)", "complete in Iter 3"),
         ("L2 Representation", "ok (contrastive + KMeans + HMM)", "complete in Iter 4"),
-        ("L3 Reasoning", "ok (TabPFN + permutation importance)", "complete in Iter 5"),
+        ("L3 Reasoning", "ok (HistGradientBoosting + perm importance)", "complete in Iter 5"),
         ("L4 Relational", "ok (GLASSO + Granger + centrality)", "complete in Iter 6"),
         ("L5 Agentic", "ok (LangGraph + DeepInfra + ledger)", "complete in Iter 7"),
     ]
