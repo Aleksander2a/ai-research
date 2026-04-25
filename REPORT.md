@@ -590,3 +590,24 @@ The agent's claims so far have been point estimates of metric differences. To ma
 **Tests** (9 new): identical losses give zero DM statistic; clearly-different losses give p<0.01; shape mismatch raises; bootstrap CI brackets the true mean; clearly-better method is promotable; same-method comparison is not; missing method/insufficient samples handled gracefully.
 
 This is the rigor floor for everything Iter 11+ will build on. Suite total: 85 passing.
+
+---
+
+## Iter 11 — Findings store
+
+The agent's raw ledger (`reports/agent/ledger.jsonl`) records every step it takes — proposals, experiments, critiques, decisions. Most of those steps don't represent discoveries; they're the working-out. **Findings** are different: they're hypotheses that passed the Iter 10 promotion gate (DM p < 0.05 AND positive bootstrap CI on the loss difference). They deserve a separate, structured store.
+
+`src/autosignalx/agent/findings.py`:
+
+- **`promote(hypothesis, method, filters, evidence, agent_confidence, round, session_id, parent_hypothesis_ids) → record`** — append a promoted finding to `reports/agent/findings.jsonl`. **Idempotent** on `(hypothesis, method, filters)`: re-promoting the same finding bumps its `replication_count` rather than duplicating. The `replications` list records each `(session_id, round)` that re-confirmed the finding.
+- **`load()`** / **`clear()`** — round-trip the store.
+- **`make_session_id()`** — sortable `YYYYMMDD-<hex>` session IDs.
+- **`_finding_id(content)`** — deterministic short ID (`f_<hash>`) derived from hypothesis+method+filters; the same hypothesis run twice produces the same ID, enabling replication tracking.
+
+`src/autosignalx/agent/graph.py` extends the experiment node with an **auto-promotion** path: when a hypothesis names a non-naive method, the agent automatically calls `tools.test_significance(...)` on the slice. If the gate returns `promotable=True`, the finding is persisted to `findings.jsonl` and the experiment result includes the `promoted_finding_id`. The agent's `session_id` is now part of `AgentState` and propagates through every promoted record for cross-session lineage.
+
+**Cockpit:** new **"Findings"** panel sorted by skill-vs-naive descending. Three top-level metrics (total findings, distinct sessions producing findings, best skill). Expandable cards per finding showing hypothesis text, filter slice, full DM/bootstrap evidence, agent confidence, and replication trail.
+
+**Tests** (3 new): round-trip of a single finding; idempotent re-promotion bumps replication count; session IDs are unique. Suite total: 88 passing.
+
+This is where the agent's "discoveries" finally have a home that's separate from its "work."

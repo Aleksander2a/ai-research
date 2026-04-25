@@ -637,6 +637,57 @@ def render_ask_the_memory() -> None:
     st.rerun()
 
 
+def render_findings() -> None:
+    st.title("Findings")
+    st.caption(
+        "Promoted findings -- hypotheses that passed the statistical "
+        "promotion gate (Diebold-Mariano p < 0.05 AND positive bootstrap CI). "
+        "Each card carries the full evidence trail."
+    )
+
+    from autosignalx.agent import findings as findings_mod
+
+    rows = findings_mod.load()
+    if not rows:
+        st.info(
+            "No promoted findings yet. Run the agent (`make agent`); it "
+            "automatically attempts to promote each experiment that names "
+            "a non-naive method."
+        )
+        return
+
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: r.get("evidence", {}).get("skill_vs_baseline", -1.0),
+        reverse=True,
+    )
+    cols = st.columns(3)
+    cols[0].metric("Total findings", len(rows_sorted))
+    cols[1].metric("Sessions producing findings", len({r.get("session_id") for r in rows_sorted}))
+    cols[2].metric("Best skill vs naive", f"{rows_sorted[0].get('evidence', {}).get('skill_vs_baseline', 0.0):+.3f}")
+
+    st.divider()
+    for r in rows_sorted:
+        ev = r.get("evidence", {})
+        with st.expander(
+            f"{r.get('id', '?')}  -  skill +{ev.get('skill_vs_baseline', 0):.3f}  "
+            f"(p={ev.get('p_value', float('nan')):.4f}, "
+            f"replications={r.get('replication_count', 1)})  -  "
+            f"{r.get('method', '?')}",
+            expanded=False,
+        ):
+            st.markdown(f"**Hypothesis** ({r.get('session_id')} round {r.get('round')}):")
+            st.markdown(f"> {r.get('hypothesis', '')}")
+            st.markdown("**Filters**:")
+            st.code(json.dumps(r.get("filters", {}), indent=2), language="json")
+            st.markdown("**Evidence**:")
+            st.code(json.dumps(ev, indent=2, default=str), language="json")
+            st.markdown(f"**Agent confidence**: _{r.get('agent_confidence', '')}_")
+            if r.get("replication_count", 1) > 1:
+                st.markdown(f"**Replications**: {r['replication_count']}")
+                st.code(json.dumps(r.get("replications", []), indent=2), language="json")
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -645,6 +696,7 @@ PANELS = {
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
     "Agent Console": render_agent_console,
+    "Findings": render_findings,
     "Ask the Memory": render_ask_the_memory,
 }
 

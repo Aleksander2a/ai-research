@@ -14,7 +14,7 @@ Public API:
 The ledger is the persistent memory cell. The cockpit's 'Ask the Memory'
 panel reads from it to answer questions about past agent reasoning."""
 
-from autosignalx.agent import graph, ledger, llm, prompts, state, tools  # noqa: F401
+from autosignalx.agent import findings, graph, ledger, llm, prompts, state, tools  # noqa: F401
 from autosignalx.agent.graph import build_agent_graph, run  # noqa: F401
 from autosignalx.agent.ledger import append, clear, load, summarize_for_prompt  # noqa: F401
 from autosignalx.agent.llm import LiveProvider, ReplayProvider, get_provider  # noqa: F401
