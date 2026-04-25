@@ -80,6 +80,94 @@ These tests are the contract that keeps the project honest as ML layers land.
 
 ---
 
+---
+
+## Iter 2 — Walk-forward eval harness with baselines
+
+The first iteration that produces actual forecast numbers. Establishes the **forecast contract**, the **walk-forward harness**, the **metric set**, and three baselines that every subsequent forecasting method (Chronos-2 in Iter 3, signal-enhanced ensembles in Iter 5+) will be measured against.
+
+### Forecast contract
+
+Every forecasting method produces a DataFrame matching `eval.contracts.FORECAST_COLUMNS_REQUIRED`:
+
+| column | meaning |
+|---|---|
+| `timestamp` | target time (trading day the forecast is for) |
+| `asset` | ticker |
+| `forecast_origin` | when the forecast was made -- always `< timestamp` |
+| `horizon` | days from origin to target |
+| `method` | string identifier of the forecasting method |
+| `prediction` | point forecast in adj_close units |
+| `origin_value` | adj_close at `forecast_origin` (used for directional metrics) |
+| `target` | realized adj_close at `timestamp` |
+
+Optional (filled by later iterations): `lower`, `upper` (Iter 3 -- intervals from Chronos-2), `regime_id` (Iter 4).
+
+`assert_forecast_schema` enforces required columns, no leakage (`forecast_origin < timestamp`), and non-negative horizons. The contract is the **seam** that lets the regime, signal, graph, and agent layers compose without tearing apart the eval surface.
+
+### Forecasting function contract
+
+```python
+ForecastFn = Callable[
+    [pd.DataFrame, pd.Timestamp, list[pd.Timestamp]],  # train, origin, target_dates
+    pd.DataFrame,                                       # cols: timestamp, prediction (+ optional lower/upper)
+]
+```
+
+### Metrics
+
+- **MAE** -- mean absolute error in adj_close units.
+- **MAPE** -- mean absolute percentage error (zero targets masked).
+- **Directional accuracy** -- fraction of forecasts whose predicted change-direction (`sign(prediction - origin_value)`) matches the realized change-direction (`sign(target - origin_value)`).
+- **Skill score** -- `1 - method_mae / baseline_mae`. Positive => better than baseline; zero => same; negative => worse. Computed per asset against the naive baseline by default.
+
+CRPS and probabilistic calibration metrics land in Iter 3 alongside Chronos-2 (when intervals become meaningful).
+
+### Baselines
+
+- **Naive** -- predict `adj_close(t+h) = adj_close(forecast_origin)`. Strong baseline for asset prices since they are approximately a random walk.
+- **Seasonal-naive** -- predict `adj_close(t+h) = adj_close(t+h - 252 calendar days)`, falling back to the most recent training value when the lookback runs off the start of history. Sanity check against models that overfit recent dynamics.
+- **ARIMA(1,1,1)** -- fit on `log(adj_close)` over the entire training set, forecast `len(target_dates)` steps ahead, exponentiate back to price space. Convergence warnings suppressed; failures bubble to the harness which gracefully skips the affected (window, asset) pair.
+
+### Walk-forward harness
+
+`harness.run_walk_forward(method_name, forecast_fn, ohlcv, windows)` iterates over every `(window, asset)` pair, slices training data up to `window.train_end`, gathers realized target trading days from the cache, calls the forecast function, and joins predictions with realized targets. The output is a forecasts DataFrame matching the contract.
+
+`harness.ablation(methods, ohlcv, windows)` runs many methods and concatenates results. `harness.summarize(forecasts, by=...)` aggregates metrics by any grouping (default: `(method, asset)`). `harness.add_skill_score(summary)` appends per-asset skill versus the naive baseline.
+
+### Tests (24 new, 51 total)
+
+- `test_eval_contracts.py` -- valid frames pass; missing columns raise; leakage rows raise; negative horizons raise; empty frames pass.
+- `test_eval_metrics.py` -- MAE / MAPE / dir-acc against hand-computed values; MAPE masks zero targets; skill score positive/zero/negative/nan cases; metrics handle NaN inputs; shape-mismatch raises.
+- `test_baselines.py` -- every baseline returns aligned predictions matching `target_dates` length, all positive and finite; naive predicts last close exactly; seasonal-naive falls back when history is too short; ARIMA forecasts don't explode on synthetic random-walk data.
+
+### CLI and cockpit
+
+- **CLI**: `autosignalx eval baseline` (also `make baseline`) runs the ablation, writes `reports/ablations/baseline.parquet`, prints a per-method summary table.
+- **Cockpit**: new "Forecast Arena" panel reads any `*.parquet` from `reports/ablations/`, shows per-method overall metrics, per-method per-asset metrics, and a forecast trajectory chart for any selected asset.
+
+`autosignalx status` now also reports ablation cache state and marks L1 Forecasting as "partial (baselines)" -- Chronos-2 (Iter 3) flips it to "ok".
+
+### Findings (initial ablation)
+
+The first end-to-end run, on the default config (87 walk-forward windows of horizon 21 trading days, over ETF prices 2020-12-31 to 2025-12-31, 8 assets, 10,032 forecasts per method, ~12 min wall-clock dominated by ARIMA fits):
+
+| Method | N | MAE | MAPE | Dir-acc | Skill vs naive |
+|---|---:|---:|---:|---:|---:|
+| naive | 10,032 | 4.254 | 2.04% | 0.2% | +0.000 |
+| arima | 10,032 | 4.265 | 2.05% | 47.5% | -0.003 |
+| seasonal_naive | 10,032 | 25.859 | 11.80% | 44.6% | -5.079 |
+
+Three findings from this:
+
+1. **Naive is essentially the floor for daily ETF prices.** ARIMA(1,1,1) on log-prices comes out with a skill score of -0.003 versus naive on MAE -- effectively identical, meaning the well-known random-walk-like behavior of liquid asset prices holds in our window. This is the bar Chronos-2 (Iter 3) needs to beat.
+2. **One-year seasonality is not the right structure.** Seasonal-naive at 252 calendar days underperforms naive by a factor of 5x on MAE. ETFs don't have a meaningful annual cycle in price level (they have drift); seasonality applies to volatility, volume, and return distributions, not levels. Worth keeping as a foil.
+3. **Directional accuracy is the differentiating metric, not MAE.** Naive's 0.2% dir-acc is structural (it predicts no change, so it almost never matches the realized direction); ARIMA at 47.5% is roughly coin-flip; seasonal-naive at 44.6% is slightly below. The interesting research question for later iterations becomes: can a model meaningfully exceed 50% dir-acc consistently, and is that improvement statistically significant per-regime?
+
+These findings are *honest negative results* relative to the implicit hypothesis "more sophisticated models beat naive." Carrying them into Iter 3 frames the Chronos-2 result correctly: any improvement of >0.01 skill score, statistically significant via Diebold-Mariano, would be a real finding rather than noise.
+
+---
+
 ## Future iterations
 
 Sections will be appended below as each iteration ships. See [README](README.md#iteration-plan) for the iteration plan.

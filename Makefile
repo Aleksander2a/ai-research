@@ -1,4 +1,4 @@
-.PHONY: help sync test lint format demo clean data
+.PHONY: help sync test lint format demo clean data baseline
 
 help:
 	@echo "AutoSignal-X — modular research instrument for predictive structure discovery"
@@ -37,6 +37,9 @@ demo:
 
 data:
 	uv run autosignalx data fetch
+
+baseline:
+	uv run autosignalx eval baseline
 
 clean:
 	rm -rf build dist *.egg-info .pytest_cache .ruff_cache htmlcov .coverage
