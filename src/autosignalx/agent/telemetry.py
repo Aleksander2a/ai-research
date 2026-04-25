@@ -136,7 +136,7 @@ class CallTimer:
         self.start_ms: float = 0.0
         self.elapsed_ms: float = 0.0
 
-    def __enter__(self) -> "CallTimer":
+    def __enter__(self) -> CallTimer:
         self.start_ms = time.perf_counter() * 1000
         return self
 
