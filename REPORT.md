@@ -566,3 +566,27 @@ Each iteration is a branch (`iter-N-theme`), merged with `--no-ff` so the bounda
 ### Closing note
 
 This submission is a *research instrument*, not a forecasting demo. The intended signal to Deeter is: I can frame ambiguous open-ended problems into measurable scientific inquiry, design layered systems that compose, build agent infrastructure that uses other layers as typed inputs, evaluate honestly (including reporting calibrated negative results), and ship reproducible artifacts under tight time constraints. The 9 iterations and their commits are the trace of that process.
+
+---
+
+# Phase 2 — Self-improving research agent (Iters 10+)
+
+The first 9 iterations shipped a research instrument that *reports* findings. Phase 2 transforms it into a research agent that **actively works to overcome them**, with full provenance from initial brainstorm to promoted finding. The headline negative result of Phase 1 ("naive beats Chronos by 5% MAE on daily ETFs") becomes the **starting condition** the agent sets out to overcome — every iteration adds a capability that makes its discoveries more rigorous, more autonomous, and more observable.
+
+---
+
+## Iter 10 — Statistical promotion gate
+
+The agent's claims so far have been point estimates of metric differences. To make those claims publishable, this iteration adds the statistical-significance infrastructure that will gate every future "finding."
+
+`src/autosignalx/eval/significance.py`:
+
+- **`dm_test(loss_a, loss_b, horizon)`** — the **Diebold–Mariano** test on aligned per-observation losses. Uses Newey-West HAC variance to handle the auto-correlation that h-step-ahead forecasts induce by overlap.
+- **`block_bootstrap_ci(values, n_bootstrap, block_size, ci, seed)`** — a moving-block bootstrap that respects serial correlation in the loss difference series; returns the requested-CI quantiles of the bootstrap mean distribution.
+- **`is_promotable(forecasts, method, baseline_method, p_threshold)`** — the **promotion gate**. Aligns predictions on `(timestamp, asset, forecast_origin)`, computes per-row absolute-error losses, runs DM on them, computes the bootstrap CI on the loss difference, returns `(promotable: bool, evidence: dict)`. A method is promotable iff DM p<threshold AND skill>0 AND the bootstrap CI on the loss difference is strictly above zero.
+
+`src/autosignalx/agent/tools.py` adds `test_significance(method, baseline_method, asset, regime_id, p_threshold)` — the agent's hand on the promotion gate. From Iter 11 onward, every claim the agent wants to "promote to a finding" must pass this.
+
+**Tests** (9 new): identical losses give zero DM statistic; clearly-different losses give p<0.01; shape mismatch raises; bootstrap CI brackets the true mean; clearly-better method is promotable; same-method comparison is not; missing method/insufficient samples handled gracefully.
+
+This is the rigor floor for everything Iter 11+ will build on. Suite total: 85 passing.

@@ -132,6 +132,38 @@ def get_top_features(regime_id: int, top_k: int = 5) -> list[dict[str, Any]]:
     ]
 
 
+def test_significance(
+    method: str,
+    baseline_method: str = "naive",
+    asset: str | None = None,
+    regime_id: int | None = None,
+    p_threshold: float = 0.05,
+) -> dict[str, Any]:
+    """Run the DM + bootstrap promotion gate on a slice.
+
+    Returns ``{promotable: bool, evidence: {...}}``. The evidence dict
+    contains DM statistic, p-value, bootstrap CI on loss difference,
+    skill score, and sample size."""
+    from autosignalx.eval.significance import is_promotable
+
+    f = _load_all_forecasts()
+    if f.empty:
+        return {"promotable": False, "evidence": {"reason": "no forecasts cached"}}
+    if regime_id is not None:
+        rl = _load_regime_labels()
+        if not rl.empty:
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            f = f.merge(rl_join, on="forecast_origin", how="left")
+            f = f[f["regime_id"] == regime_id]
+    if asset is not None:
+        f = f[f["asset"] == asset]
+    promotable, evidence = is_promotable(
+        f, method=method, baseline_method=baseline_method, p_threshold=p_threshold
+    )
+    evidence["filters"] = {"asset": asset, "regime_id": regime_id}
+    return {"promotable": promotable, "evidence": evidence}
+
+
 def get_centrality_summary() -> dict[str, dict[str, float]]:
     """Per-asset centrality dictionary."""
     c = _load_centrality()
