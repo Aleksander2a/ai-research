@@ -114,7 +114,13 @@ def run_backtest(
         m = metrics.compute_all(
             out["equity"], out["returns"], out["turnover"], out["cost"]
         )
-        metrics_payload[display_name] = metrics.sanitize_metrics(m)
+        sanitized = metrics.sanitize_metrics(m)
+        regime_series = context.get("regimes")
+        if regime_series is not None:
+            sanitized["per_regime"] = metrics.compute_per_regime(
+                out["returns"], out["turnover"], out["cost"], regime_series
+            )
+        metrics_payload[display_name] = sanitized
         summaries.append(StrategyResult(name=display_name, **m))
 
         per_day = pd.DataFrame(

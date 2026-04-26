@@ -132,3 +132,32 @@ def _sanitize(value: float) -> float:
 def sanitize_metrics(metrics: dict[str, float]) -> dict[str, float]:
     return {k: _sanitize(v) if isinstance(v, float | np.floating) else v
             for k, v in metrics.items()}
+
+
+def compute_per_regime(
+    returns: pd.Series,
+    turnover: pd.Series,
+    cost: pd.Series,
+    regimes: pd.Series,
+    periods_per_year: int = 252,
+) -> dict[int, dict[str, float]]:
+    """Recompute the metric block on each regime's subset of bars.
+
+    The regime-conditional equity curve is rebuilt from the filtered
+    returns, so the per-regime Sharpe/Calmar reflect only the bars in
+    that regime (compounding contiguously). Bars where the regime label
+    is missing are skipped.
+    """
+    aligned = regimes.reindex(returns.index).ffill()
+    out: dict[int, dict[str, float]] = {}
+    for r in sorted(aligned.dropna().unique()):
+        mask = aligned == r
+        sub_ret = returns[mask]
+        if sub_ret.empty:
+            continue
+        sub_turn = turnover[mask]
+        sub_cost = cost[mask]
+        sub_eq = (1.0 + sub_ret).cumprod()
+        block = compute_all(sub_eq, sub_ret, sub_turn, sub_cost, periods_per_year)
+        out[int(r)] = sanitize_metrics(block)
+    return out

@@ -67,7 +67,7 @@ class EqualWeightUniverse(BaseStrategy):
 def _build_rebalance_weights(
     signals_wide: pd.DataFrame,
     prices: pd.DataFrame,
-    weight_at_origin: callable,
+    weight_at_origin,
 ) -> pd.DataFrame:
     """Shared scaffold for origin-based rebalancing strategies.
 
@@ -75,9 +75,9 @@ def _build_rebalance_weights(
         signals_wide: DataFrame indexed by ``forecast_origin``, columns
             are assets, values are predicted returns over the horizon.
         prices: prices panel; weights are emitted on the prices calendar.
-        weight_at_origin: callable taking a row Series (asset -> signal)
-            and returning a Series of weights (asset -> weight) for that
-            origin. May return a Series with only the active assets.
+        weight_at_origin: callable ``(ranked, origin) -> Series`` that
+            returns weights (asset -> weight) for the given origin. May
+            return an empty Series to signal "go to cash."
 
     The output frame is initialised to NaN, set on each rebalance date
     (the first prices bar at or after the origin), then forward-filled
@@ -94,7 +94,7 @@ def _build_rebalance_weights(
             continue
         target_date = future[0]
         new_w = pd.Series(0.0, index=prices.columns)
-        chosen = weight_at_origin(ranked)
+        chosen = weight_at_origin(ranked, origin)
         chosen = chosen.reindex(prices.columns).fillna(0.0)
         new_w = new_w.add(chosen, fill_value=0.0)
         weights.loc[target_date] = new_w.values
@@ -127,7 +127,7 @@ class TopKLong(BaseStrategy):
             .sort_index()
         )
 
-        def pick(ranked: pd.Series) -> pd.Series:
+        def pick(ranked: pd.Series, _origin) -> pd.Series:
             top = ranked.nlargest(min(self.k, len(ranked))).index
             return pd.Series(1.0 / self.k, index=top)
 
@@ -160,7 +160,7 @@ class LongShortKK(BaseStrategy):
             .sort_index()
         )
 
-        def pick(ranked: pd.Series) -> pd.Series:
+        def pick(ranked: pd.Series, _origin) -> pd.Series:
             n = len(ranked)
             if n < 2 * self.k:
                 return pd.Series(dtype=float)
@@ -178,11 +178,136 @@ class LongShortKK(BaseStrategy):
 # ---------------------------------------------------------------------------
 
 
+class RegimeGated(BaseStrategy):
+    """TopKLong, but only when the current regime has at least one
+    promoted finding. Outside those regimes, hold cash. The set of
+    "good" regimes is read from ``reports/agent/findings.jsonl`` and is
+    therefore frozen at agent-promotion time -- a parameter of the
+    discovery pipeline, not of the backtest."""
+
+    def __init__(self, k: int = 3, method: str = "chronos2_multivariate"):
+        if k < 1:
+            raise ValueError("k must be >= 1")
+        self.k = int(k)
+        self.method = method
+
+    @property
+    def name(self) -> str:
+        return f"RegimeGated(k={self.k})"
+
+    def weights(
+        self, prices: pd.DataFrame, context: dict | None = None
+    ) -> pd.DataFrame:
+        ctx = context or {}
+        sigs = ctx.get("forecast_signals")
+        regimes = ctx.get("regimes")
+        findings = ctx.get("findings", [])
+        if sigs is None or sigs.empty:
+            raise ValueError(f"{self.name} requires 'forecast_signals' in context")
+        if regimes is None:
+            raise ValueError(f"{self.name} requires 'regimes' in context")
+
+        good_regimes = {
+            f.get("filters", {}).get("regime_id")
+            for f in findings
+            if f.get("filters", {}).get("regime_id") is not None
+        }
+
+        wide = (
+            sigs.pivot(index="forecast_origin", columns="asset", values="predicted_return")
+            .reindex(columns=prices.columns)
+            .sort_index()
+        )
+        regime_at = regimes.sort_index()
+
+        def pick(ranked: pd.Series, origin) -> pd.Series:
+            if not good_regimes:
+                return pd.Series(dtype=float)
+            past = regime_at.loc[regime_at.index <= origin]
+            if past.empty:
+                return pd.Series(dtype=float)
+            current = past.iloc[-1]
+            if current not in good_regimes:
+                return pd.Series(dtype=float)
+            top = ranked.nlargest(min(self.k, len(ranked))).index
+            return pd.Series(1.0 / self.k, index=top)
+
+        return _build_rebalance_weights(wide, prices, pick)
+
+
+class FindingDriven(BaseStrategy):
+    """Trade only the (asset, regime) combinations promoted in
+    ``findings.jsonl``. At each rebalance, for each asset whose current
+    regime matches a finding's regime_id and whose predicted return is
+    positive, take a long position weighted by the finding's
+    ``skill_vs_baseline``. Weights are renormalised so gross <= 1.0."""
+
+    def __init__(self):
+        pass
+
+    @property
+    def name(self) -> str:
+        return "FindingDriven"
+
+    def weights(
+        self, prices: pd.DataFrame, context: dict | None = None
+    ) -> pd.DataFrame:
+        ctx = context or {}
+        sigs = ctx.get("forecast_signals")
+        regimes = ctx.get("regimes")
+        findings = ctx.get("findings", [])
+        if sigs is None or sigs.empty:
+            raise ValueError(f"{self.name} requires 'forecast_signals' in context")
+        if regimes is None:
+            raise ValueError(f"{self.name} requires 'regimes' in context")
+        if not findings:
+            return pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+
+        finding_table: dict[tuple[str, int], float] = {}
+        for f in findings:
+            filt = f.get("filters", {}) or {}
+            asset = filt.get("asset")
+            regime = filt.get("regime_id")
+            if asset is None or regime is None:
+                continue
+            skill = float(f.get("evidence", {}).get("skill_vs_baseline", 0.0))
+            key = (asset, int(regime))
+            finding_table[key] = max(finding_table.get(key, 0.0), skill)
+        if not finding_table:
+            return pd.DataFrame(0.0, index=prices.index, columns=prices.columns)
+
+        wide = (
+            sigs.pivot(index="forecast_origin", columns="asset", values="predicted_return")
+            .reindex(columns=prices.columns)
+            .sort_index()
+        )
+        regime_at = regimes.sort_index()
+
+        def pick(ranked: pd.Series, origin) -> pd.Series:
+            past = regime_at.loc[regime_at.index <= origin]
+            if past.empty:
+                return pd.Series(dtype=float)
+            current = int(past.iloc[-1])
+            raw: dict[str, float] = {}
+            for asset, predicted in ranked.items():
+                skill = finding_table.get((asset, current), 0.0)
+                if skill > 0.0 and predicted > 0.0:
+                    raw[asset] = skill
+            if not raw:
+                return pd.Series(dtype=float)
+            total = sum(raw.values())
+            return pd.Series({a: w / total for a, w in raw.items()})
+
+        return _build_rebalance_weights(wide, prices, pick)
+
+
 STRATEGY_REGISTRY: dict[str, type[BaseStrategy]] = {
     "BuyAndHoldSPY": BuyAndHoldSPY,
     "EqualWeightUniverse": EqualWeightUniverse,
     "TopKLong": TopKLong,
     "LongShortKK": LongShortKK,
+    "RegimeGated": RegimeGated,
+    "FindingDriven": FindingDriven,
 }
 
 

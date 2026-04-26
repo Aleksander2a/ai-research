@@ -86,6 +86,19 @@ def test_calmar_zero_drawdown_returns_nan():
     assert math.isnan(metrics.calmar(eq))
 
 
+def test_compute_per_regime_partitions_returns():
+    idx = pd.bdate_range("2021-01-04", periods=10)
+    rets = pd.Series([0.01, 0.02, -0.01, 0.0, 0.03, -0.02, 0.0, 0.01, -0.005, 0.0],
+                     index=idx)
+    turn = pd.Series(0.0, index=idx)
+    cost = pd.Series(0.0, index=idx)
+    regimes = pd.Series([0] * 5 + [1] * 5, index=idx, name="regime_id")
+    out = metrics.compute_per_regime(rets, turn, cost, regimes)
+    assert set(out) == {0, 1}
+    assert out[0]["n_periods"] == 5
+    assert out[1]["n_periods"] == 5
+
+
 def test_annual_vol_close_to_known():
     rng = np.random.default_rng(0)
     rets = pd.Series(rng.normal(0.0, 0.01, size=10000),

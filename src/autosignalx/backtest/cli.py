@@ -25,8 +25,8 @@ console = Console()
 @backtest_app.command("run")
 def run_cmd(
     strategies: str = typer.Option(
-        "BuyAndHoldSPY,EqualWeightUniverse",
-        help="Comma-separated strategy names.",
+        "BuyAndHoldSPY;EqualWeightUniverse;TopKLong:k=3;LongShortKK:k=2;RegimeGated:k=3;FindingDriven",
+        help="Semicolon-separated strategy specs (e.g. 'TopKLong:k=3;LongShortKK:k=2').",
     ),
     start: str = typer.Option("2021-01-01", help="Backtest start (YYYY-MM-DD)."),
     end: str = typer.Option("2025-12-31", help="Backtest end (YYYY-MM-DD)."),
@@ -34,7 +34,7 @@ def run_cmd(
     seed: int = typer.Option(42, help="Random seed."),
 ) -> None:
     """Run the backtest ablation and write artifacts."""
-    strat_list = [s.strip() for s in strategies.split(",") if s.strip()]
+    strat_list = [s.strip() for s in strategies.split(";") if s.strip()]
     cfg = BacktestConfig(
         strategies=strat_list,
         start_date=start,

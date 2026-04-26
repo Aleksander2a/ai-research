@@ -119,3 +119,85 @@ def test_signal_strategy_requires_context():
     s = strategies.parse_strategy_spec("TopKLong:k=1")
     with pytest.raises(ValueError, match="forecast_signals"):
         s.weights(px, context=None)
+
+
+def _regimes(idx: pd.DatetimeIndex, regime_id: int) -> pd.Series:
+    return pd.Series(regime_id, index=idx, name="regime_id")
+
+
+def test_regime_gated_holds_cash_when_no_findings():
+    px = _prices(("A", "B"), n=10)
+    sigs = _signals_at(["2021-01-04"], {"A": [0.1], "B": [-0.1]})
+    regimes = _regimes(px.index, regime_id=2)
+    s = strategies.parse_strategy_spec("RegimeGated:k=1")
+    w = s.weights(px, context={
+        "forecast_signals": sigs, "regimes": regimes, "findings": []
+    })
+    assert (w == 0.0).all().all()
+
+
+def test_regime_gated_trades_only_in_good_regime():
+    px = _prices(("A", "B"), n=15)
+    # Regime 3 (good) for the first 4 bars; regime 0 (bad) thereafter.
+    regimes = pd.Series([3] * 4 + [0] * 11, index=px.index, name="regime_id")
+    # Two rebalances: origin 0 lands inside regime 3, origin at index 5
+    # lands inside regime 0.
+    sigs = _signals_at(
+        [str(px.index[0].date()), str(px.index[5].date())],
+        {"A": [0.1, 0.1], "B": [-0.1, -0.1]},
+    )
+    findings = [{"filters": {"asset": "A", "regime_id": 3},
+                 "evidence": {"skill_vs_baseline": 0.05}}]
+    s = strategies.parse_strategy_spec("RegimeGated:k=1")
+    w = s.weights(px, context={
+        "forecast_signals": sigs, "regimes": regimes, "findings": findings
+    })
+    # First rebalance (regime 3): A long.
+    assert w.iloc[0]["A"] == pytest.approx(1.0)
+    # Second rebalance (regime 0, not in good_regimes): cash.
+    assert w.iloc[-1]["A"] == 0.0
+    assert w.iloc[-1]["B"] == 0.0
+
+
+def test_finding_driven_returns_cash_when_no_findings():
+    px = _prices(("A", "B"), n=10)
+    sigs = _signals_at(["2021-01-04"], {"A": [0.1], "B": [0.05]})
+    regimes = _regimes(px.index, regime_id=3)
+    s = strategies.parse_strategy_spec("FindingDriven")
+    w = s.weights(px, context={
+        "forecast_signals": sigs, "regimes": regimes, "findings": []
+    })
+    assert (w == 0.0).all().all()
+
+
+def test_finding_driven_only_trades_promoted_pairs():
+    px = _prices(("A", "B", "C"), n=10)
+    # All assets predict positive returns.
+    sigs = _signals_at(
+        ["2021-01-04"], {"A": [0.05], "B": [0.10], "C": [0.20]}
+    )
+    regimes = _regimes(px.index, regime_id=3)
+    # Only B is promoted in regime 3.
+    findings = [{"filters": {"asset": "B", "regime_id": 3},
+                 "evidence": {"skill_vs_baseline": 0.05}}]
+    s = strategies.parse_strategy_spec("FindingDriven")
+    w = s.weights(px, context={
+        "forecast_signals": sigs, "regimes": regimes, "findings": findings
+    })
+    assert w.iloc[0]["B"] == pytest.approx(1.0)
+    assert w.iloc[0]["A"] == 0.0
+    assert w.iloc[0]["C"] == 0.0
+
+
+def test_finding_driven_skips_negative_predicted_return():
+    """Finding promoted but predicted return negative -> stay flat."""
+    px = _prices(("A",), n=10)
+    sigs = _signals_at(["2021-01-04"], {"A": [-0.05]})
+    regimes = _regimes(px.index, regime_id=3)
+    findings = [{"filters": {"asset": "A", "regime_id": 3},
+                 "evidence": {"skill_vs_baseline": 0.05}}]
+    s = strategies.parse_strategy_spec("FindingDriven")
+    w = s.weights(px, context={
+        "forecast_signals": sigs, "regimes": regimes, "findings": findings
+    })
+    assert (w == 0.0).all().all()
