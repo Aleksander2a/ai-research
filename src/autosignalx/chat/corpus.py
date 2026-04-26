@@ -231,6 +231,103 @@ def _backtest_chunks(reports_dir: Path) -> list[Chunk]:
     return chunks
 
 
+def _survival_chunks(reports_dir: Path) -> list[Chunk]:
+    entries = _read_jsonl(reports_dir / "agent" / "survival.jsonl")
+    chunks: list[Chunk] = []
+    for e in entries:
+        fid = e.get("finding_id", "?")
+        sa = (
+            "survives all attacks"
+            if e.get("survives_all")
+            else "fails at least one attack"
+        )
+        text = (
+            f"Survival record for finding {fid}: {sa}. "
+            f"FDR q={e.get('fdr_q')}, survives_fdr={e.get('survives_fdr')}, "
+            f"survives_full_test={e.get('survives_full_test')}, "
+            f"survives_placebo={e.get('survives_placebo')}, "
+            f"survives_block_holdout={e.get('survives_block_holdout')}."
+        )
+        chunks.append(
+            Chunk(
+                citation_id=f"survival:{fid}",
+                kind="survival",
+                text=_trim(text),
+                meta={"finding_id": fid, "survives_all": e.get("survives_all")},
+            )
+        )
+    return chunks
+
+
+def _per_regime_graph_chunks(reports_dir: Path) -> list[Chunk]:
+    sens_path = reports_dir / "graph" / "per_regime" / "regime_sensitivity.parquet"
+    if not sens_path.exists():
+        return []
+    try:
+        import pandas as pd
+
+        sens = pd.read_parquet(sens_path)
+    except Exception:  # noqa: BLE001
+        return []
+    chunks: list[Chunk] = []
+    for _, row in sens.iterrows():
+        node = row.get("node", "?")
+        bmin = row.get("betweenness_centrality_min", 0)
+        bmax = row.get("betweenness_centrality_max", 0)
+        brange = row.get("betweenness_centrality_range", 0)
+        chunks.append(
+            Chunk(
+                citation_id=f"regime_graph:{node}",
+                kind="regime_graph",
+                text=_trim(
+                    f"Cross-regime structural role of {node}: betweenness centrality ranges "
+                    f"from {bmin:.3f} to {bmax:.3f} (range={brange:.3f}). "
+                    f"Larger range means the asset's role as a cross-asset bridge flips more "
+                    f"dramatically across regimes."
+                ),
+                meta={"node": str(node), "betweenness_range": float(brange)},
+            )
+        )
+    return chunks
+
+
+def _signal_stability_chunks(reports_dir: Path) -> list[Chunk]:
+    stab_path = reports_dir / "signals" / "signal_stability.parquet"
+    if not stab_path.exists():
+        return []
+    try:
+        import pandas as pd
+
+        stab = pd.read_parquet(stab_path)
+    except Exception:  # noqa: BLE001
+        return []
+    chunks: list[Chunk] = []
+    # Top-3 stable, high-importance features per regime.
+    for rid, group in stab.groupby("regime_id", observed=True):
+        head = group.sort_values("mean_importance", ascending=False).head(3)
+        for _, row in head.iterrows():
+            top_share_col = next(
+                (c for c in row.index if c.startswith("top") and c.endswith("_share")),
+                None,
+            )
+            top_share = row.get(top_share_col, 0) if top_share_col else 0
+            chunks.append(
+                Chunk(
+                    citation_id=f"signal_stability:r{int(rid)}/{row['feature']}",
+                    kind="signal_stability",
+                    text=_trim(
+                        f"Walk-forward stability for feature {row['feature']} in regime {int(rid)}: "
+                        f"mean importance={row.get('mean_importance', 0):.3f}, "
+                        f"mean rank={row.get('mean_rank', 0):.1f}, "
+                        f"stability={row.get('stability', 0):.2f}, "
+                        f"top-K share={float(top_share):.2f}."
+                    ),
+                    meta={"regime_id": int(rid), "feature": str(row["feature"])},
+                )
+            )
+    return chunks
+
+
 def build_corpus(
     reports_dir: Path | None = None,
 ) -> list[Chunk]:
@@ -238,6 +335,9 @@ def build_corpus(
     rd = reports_dir or settings.reports_dir
     chunks: list[Chunk] = []
     chunks.extend(_finding_chunks(rd))
+    chunks.extend(_survival_chunks(rd))
+    chunks.extend(_per_regime_graph_chunks(rd))
+    chunks.extend(_signal_stability_chunks(rd))
     chunks.extend(_lessons_chunks(rd))
     chunks.extend(_self_critique_chunks(rd))
     chunks.extend(_trace_quality_chunks(rd))

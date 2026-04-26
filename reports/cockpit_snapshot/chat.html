@@ -33,10 +33,10 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 </style>
 </head>
 <body>
-<nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="findings.html" class="">Findings</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="active">Chat corpus</a></nav>
+<nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="active">Chat corpus</a></nav>
 
 <div class="container">
-<h1>Chat corpus</h1><p class='caption'>The retrieval index that powers <em>Ask the Memory</em>. Every chunk has a stable <code>citation_id</code> the LLM must cite verbatim or refuse.</p><div class='card'><h2 style='margin-top:0'>Index breakdown</h2><table><tr><th>Kind</th><th>Count</th></tr><tr><td>backtest</td><td>18</td></tr><tr><td>finding</td><td>1</td></tr><tr><td>ledger</td><td>16</td></tr><tr><td>lesson</td><td>6</td></tr><tr><td>self_critique</td><td>1</td></tr><tr><td>telemetry</td><td>4</td></tr><tr><td>trace_quality</td><td>3</td></tr></table></div><div class='card'><h2 style='margin-top:0'>Sample chunks (first 60)</h2><table class="dataframe data-table">
+<h1>Chat corpus</h1><p class='caption'>The retrieval index that powers <em>Ask the Memory</em>. Every chunk has a stable <code>citation_id</code> the LLM must cite verbatim or refuse.</p><div class='card'><h2 style='margin-top:0'>Index breakdown</h2><table><tr><th>Kind</th><th>Count</th></tr><tr><td>finding</td><td>1</td></tr><tr><td>ledger</td><td>16</td></tr><tr><td>lesson</td><td>6</td></tr><tr><td>regime_graph</td><td>8</td></tr><tr><td>self_critique</td><td>1</td></tr><tr><td>signal_stability</td><td>12</td></tr><tr><td>survival</td><td>1</td></tr><tr><td>telemetry</td><td>4</td></tr><tr><td>trace_quality</td><td>3</td></tr></table></div><div class='card'><h2 style='margin-top:0'>Sample chunks (first 60)</h2><table class="dataframe data-table">
   <thead>
     <tr style="text-align: right;">
       <th>citation_id</th>
@@ -49,6 +49,111 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
       <td>finding:f_9395cd1bd1be</td>
       <td>finding</td>
       <td>Promoted finding f_9395cd1bd1be (passed DM + bootstrap gate). Hypothesis: In regime 3, where the latent state is dominated by DXY-level and VIX-level shocks, ch...</td>
+    </tr>
+    <tr>
+      <td>survival:f_9395cd1bd1be</td>
+      <td>survival</td>
+      <td>Survival record for finding f_9395cd1bd1be: fails at least one attack. FDR q=0.03975992644041759, survives_fdr=True, survives_full_test=True, survives_placebo=T...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:GLD</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of GLD: betweenness centrality ranges from 0.000 to 0.619 (range=0.619). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:TLT</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of TLT: betweenness centrality ranges from 0.048 to 0.571 (range=0.524). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:EFA</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of EFA: betweenness centrality ranges from 0.000 to 0.286 (range=0.286). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:EEM</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of EEM: betweenness centrality ranges from 0.000 to 0.286 (range=0.286). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:QQQ</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of QQQ: betweenness centrality ranges from 0.095 to 0.381 (range=0.286). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:IWM</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of IWM: betweenness centrality ranges from 0.000 to 0.190 (range=0.190). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:HYG</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of HYG: betweenness centrality ranges from 0.000 to 0.048 (range=0.048). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>regime_graph:SPY</td>
+      <td>regime_graph</td>
+      <td>Cross-regime structural role of SPY: betweenness centrality ranges from 0.000 to 0.000 (range=0.000). Larger range means the asset's role as a cross-asset bridg...</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r0/macro_CL=F_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_CL=F_level in regime 0: mean importance=0.138, mean rank=1.0, stability=1.00, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r0/macro_^TNX_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_^TNX_level in regime 0: mean importance=0.079, mean rank=3.0, stability=0.92, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r0/macd_signal</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macd_signal in regime 0: mean importance=0.058, mean rank=3.5, stability=0.96, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r1/rolling_std_20</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature rolling_std_20 in regime 1: mean importance=0.078, mean rank=2.0, stability=1.00, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r1/macro_DX-Y.NYB_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_DX-Y.NYB_level in regime 1: mean importance=0.073, mean rank=3.0, stability=0.83, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r1/macro_^VIX_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_^VIX_level in regime 1: mean importance=0.068, mean rank=3.0, stability=1.00, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r2/macro_^TNX_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_^TNX_level in regime 2: mean importance=0.166, mean rank=2.0, stability=0.92, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r2/rolling_std_20</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature rolling_std_20 in regime 2: mean importance=0.081, mean rank=3.0, stability=0.92, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r2/macd_signal</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macd_signal in regime 2: mean importance=0.064, mean rank=5.0, stability=0.83, top-K share=0.50.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r3/macd_signal</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macd_signal in regime 3: mean importance=0.081, mean rank=1.8, stability=0.94, top-K share=1.00.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r3/momentum_60</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature momentum_60 in regime 3: mean importance=0.052, mean rank=4.5, stability=0.82, top-K share=0.50.</td>
+    </tr>
+    <tr>
+      <td>signal_stability:r3/macro_^VIX_level</td>
+      <td>signal_stability</td>
+      <td>Walk-forward stability for feature macro_^VIX_level in regime 3: mean importance=0.042, mean rank=6.8, stability=0.77, top-K share=0.25.</td>
     </tr>
     <tr>
       <td>lesson:0</td>
@@ -113,102 +218,12 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
     <tr>
       <td>telemetry:deepseek-ai/DeepSeek-V4-Pro</td>
       <td>telemetry</td>
-      <td>Telemetry for deepseek-ai/DeepSeek-V4-Pro: 11 calls, $0.0067 total, 12928 tokens.</td>
+      <td>Telemetry for deepseek-ai/DeepSeek-V4-Pro: 3 calls, $0.0025 total, 4273 tokens.</td>
     </tr>
     <tr>
       <td>telemetry:total</td>
       <td>telemetry</td>
-      <td>Total LLM spend across 24 calls: $0.0603.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T083004-4227f1/BuyAndHoldSPY</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T083004-4227f1 -- strategy BuyAndHoldSPY performance: Sharpe ratio=0.8969, CAGR=0.1491, max drawdown=-0.2450, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T083004-4227f1/EqualWeightUniverse</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T083004-4227f1 -- strategy EqualWeightUniverse performance: Sharpe ratio=0.6932, CAGR=0.0830, max drawdown=-0.2530, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084244-5c9752/BuyAndHoldSPY</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084244-5c9752 -- strategy BuyAndHoldSPY performance: Sharpe ratio=0.8969, CAGR=0.1491, max drawdown=-0.2450, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084244-5c9752/EqualWeightUniverse</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084244-5c9752 -- strategy EqualWeightUniverse performance: Sharpe ratio=0.6932, CAGR=0.0830, max drawdown=-0.2530, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084244-5c9752/TopKLong(k=3)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084244-5c9752 -- strategy TopKLong(k=3) performance: Sharpe ratio=0.5136, CAGR=0.0695, max drawdown=-0.1907, turnover=0.0694.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084244-5c9752/LongShortKK(k=2)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084244-5c9752 -- strategy LongShortKK(k=2) performance: Sharpe ratio=-0.1739, CAGR=-0.0180, max drawdown=-0.2331, turnover=0.0833.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/BuyAndHoldSPY</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy BuyAndHoldSPY performance: Sharpe ratio=0.8969, CAGR=0.1491, max drawdown=-0.2450, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/EqualWeightUniverse</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy EqualWeightUniverse performance: Sharpe ratio=0.6932, CAGR=0.0830, max drawdown=-0.2530, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/TopKLong(k=3)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy TopKLong(k=3) performance: Sharpe ratio=0.5136, CAGR=0.0695, max drawdown=-0.1907, turnover=0.0694.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/LongShortKK(k=2)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy LongShortKK(k=2) performance: Sharpe ratio=-0.1739, CAGR=-0.0180, max drawdown=-0.2331, turnover=0.0833.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/RegimeGated(k=3)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy RegimeGated(k=3) performance: Sharpe ratio=-0.1841, CAGR=-0.0221, max drawdown=-0.1880, turnover=0.0245.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T084734-0f5cf8/FindingDriven</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T084734-0f5cf8 -- strategy FindingDriven performance: Sharpe ratio=-0.2990, CAGR=-0.0210, max drawdown=-0.1931, turnover=0.0080.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/BuyAndHoldSPY</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy BuyAndHoldSPY performance: Sharpe ratio=0.8969, CAGR=0.1491, max drawdown=-0.2450, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/EqualWeightUniverse</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy EqualWeightUniverse performance: Sharpe ratio=0.6932, CAGR=0.0830, max drawdown=-0.2530, turnover=0.0008.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/TopKLong(k=3)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy TopKLong(k=3) performance: Sharpe ratio=0.5136, CAGR=0.0695, max drawdown=-0.1907, turnover=0.0694.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/LongShortKK(k=2)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy LongShortKK(k=2) performance: Sharpe ratio=-0.1739, CAGR=-0.0180, max drawdown=-0.2331, turnover=0.0833.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/RegimeGated(k=3)</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy RegimeGated(k=3) performance: Sharpe ratio=-0.1841, CAGR=-0.0221, max drawdown=-0.1880, turnover=0.0245.</td>
-    </tr>
-    <tr>
-      <td>backtest:20260426T085117-ffdee7/FindingDriven</td>
-      <td>backtest</td>
-      <td>Backtest run 20260426T085117-ffdee7 -- strategy FindingDriven performance: Sharpe ratio=-0.2990, CAGR=-0.0210, max drawdown=-0.1931, turnover=0.0080.</td>
+      <td>Total LLM spend across 16 calls: $0.0562.</td>
     </tr>
     <tr>
       <td>ledger:r0/theorist</td>

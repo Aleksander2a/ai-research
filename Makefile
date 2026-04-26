@@ -50,8 +50,14 @@ regime:
 signal:
 	uv run autosignalx signal rank
 
+signal-stability:
+	uv run autosignalx signal stability
+
 graph:
 	uv run autosignalx graph build
+
+graph-per-regime:
+	uv run autosignalx graph build-per-regime
 
 agent:
 	uv run autosignalx agent run --fresh

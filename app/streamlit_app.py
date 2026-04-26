@@ -562,6 +562,127 @@ def render_signal_lab() -> None:
             st.dataframe(pivoted, use_container_width=True)
 
 
+def render_regime_graph() -> None:
+    st.title("Regime-Conditioned Graph")
+    st.caption(
+        "Cross-asset structure recomputed within each regime's data subset. "
+        "Surfaces hubs that only matter in one regime, bridge assets that flip "
+        "role across regimes, and clusters that fragment under stress -- "
+        "structural information the global graph averages away."
+    )
+
+    _panel_doc(
+        inputs="`reports/graph/per_regime/regime_<id>/{edges,centrality}.parquet` plus `regime_sensitivity.parquet`. Built by `autosignalx graph build-per-regime`. Requires both the kmeans regime artifact and the OHLCV cache.",
+        operations="For each regime's timestep subset: (1) GLASSO partial-correlation edges (`graph.correlation`); (2) Granger causality edges (`graph.causality`); (3) NetworkX centrality on the partial-correlation graph (`graph.centrality`). Then aggregate per-asset centrality across regimes into `regime_sensitivity.parquet` -- the dispersion (max - min betweenness) ranks how *regime-sensitive* each asset's structural role is.",
+        goal="Expose regime-conditional structural changes that the global graph hides. The strongest research signal here is when a hub or bridge asset *only* plays that role in a specific regime -- evidence that the regime label captures real structural state, not just a noise cluster.",
+        interpretation="Compare the per-regime hub/bridge tables: an asset that is a bridge in every regime (e.g., TLT often is) plays a stable role; an asset whose betweenness ranges from ~0 to ~0.6 (look at the sensitivity table) is regime-conditional. Both are valuable signals -- the first for stable cross-asset risk modelling, the second for regime-aware allocation.",
+    )
+
+    from autosignalx.graph import per_regime as pr
+
+    loaded = pr.load_per_regime()
+    if not loaded:
+        st.warning(
+            "No per-regime graph artifacts. Run `autosignalx graph build-per-regime`."
+        )
+        return
+
+    # Headline summary
+    cols = st.columns(len(loaded))
+    for col, (rid, payload) in zip(cols, sorted(loaded.items()), strict=False):
+        cent = payload["centrality"].sort_values("eigenvector_centrality", ascending=False)
+        bridge = payload["centrality"].sort_values("betweenness_centrality", ascending=False)
+        with col:
+            st.markdown(f"**Regime {rid}**")
+            st.caption(f"n={int(cent['n_samples'].iloc[0]) if 'n_samples' in cent.columns else '?'} samples")
+            st.metric("Top hub (eig.)", str(cent.iloc[0]["node"]) if not cent.empty else "?")
+            st.metric("Top bridge (betw.)", str(bridge.iloc[0]["node"]) if not bridge.empty else "?")
+            st.metric("Edges", len(payload["edges"]))
+
+    st.divider()
+    st.subheader("Regime-sensitivity ranking")
+    sens = pr.load_regime_sensitivity()
+    if not sens.empty:
+        st.caption(
+            "Assets ranked by how much their betweenness centrality varies across regimes. "
+            "Larger range = role flips more dramatically with regime."
+        )
+        display_cols = [
+            c for c in [
+                "node", "betweenness_centrality_min", "betweenness_centrality_max",
+                "betweenness_centrality_range", "eigenvector_centrality_mean",
+                "degree_centrality_mean",
+            ] if c in sens.columns
+        ]
+        st.dataframe(sens[display_cols], use_container_width=True, hide_index=True)
+    else:
+        st.info("No sensitivity summary available (single-regime data?).")
+
+    st.divider()
+    st.subheader("Per-regime centrality detail")
+    for rid, payload in sorted(loaded.items()):
+        with st.expander(f"Regime {rid}"):
+            st.dataframe(
+                payload["centrality"].sort_values("eigenvector_centrality", ascending=False),
+                use_container_width=True, hide_index=True,
+            )
+
+
+def render_signal_stability() -> None:
+    st.title("Signal Stability")
+    st.caption(
+        "Walk-forward feature-importance rankings across rolling windows. "
+        "Distinguishes features whose high importance is *stable* from those "
+        "whose ranking is an averaging artefact of one favourable sub-period."
+    )
+
+    _panel_doc(
+        inputs="`reports/signals/walk_forward_ranking.parquet` (per-window-per-regime importance + rank) and `reports/signals/signal_stability.parquet` (per-(regime, feature) summary). Built by `autosignalx signal stability`.",
+        operations="Slide N walk-forward windows across the timeline, refit the per-regime HistGradientBoosting + permutation importance ranker inside each, persist per-window rankings. Aggregate to per-(regime, feature) metrics: mean importance, mean rank, rank std, top-K share, and a composite stability = 1 - (rank_std / max_rank).",
+        goal="Cross-validate the per-regime signal ranking. A feature with high mean importance AND high stability AND high top-K share is research-grade; high importance + low stability flags an averaging artefact; high stability with low importance flags a consistently-mediocre feature.",
+        interpretation="Stability ∈ [0,1]; >0.85 is robust. Top-K share = fraction of windows the feature was in the top-K within its regime. The combination 'mean importance > 0.05 AND stability > 0.85 AND top-5 share > 0.75' is a useful research-grade gate.",
+    )
+
+    from autosignalx.signal import stability as stab
+
+    summary = stab.load_stability()
+    wf = stab.load_walk_forward()
+    if summary.empty:
+        st.warning("No stability summary. Run `autosignalx signal stability`.")
+        return
+
+    regimes = sorted(summary["regime_id"].unique())
+    selected = st.selectbox("Regime", regimes)
+    sub = summary[summary["regime_id"] == selected].sort_values("mean_importance", ascending=False)
+
+    st.subheader(f"Regime {selected} -- top features")
+    cols = [c for c in [
+        "feature", "mean_importance", "mean_rank", "rank_std", "stability",
+    ] + [c for c in sub.columns if c.startswith("top")] for c in [c]]
+    cols = [c for c in cols if c in sub.columns]
+    st.dataframe(sub[cols].head(15), use_container_width=True, hide_index=True)
+
+    if not wf.empty:
+        wf_sub = wf[wf["regime_id"] == selected]
+        try:
+            import plotly.express as px
+
+            top_features = sub.head(8)["feature"].tolist()
+            wf_top = wf_sub[wf_sub["feature"].isin(top_features)]
+            if not wf_top.empty:
+                fig = px.line(
+                    wf_top.sort_values("window_idx"),
+                    x="window_idx", y="rank", color="feature",
+                    markers=True, title=f"Rank trajectory across windows (regime {selected})",
+                    template="plotly_white",
+                )
+                fig.update_yaxes(autorange="reversed", title="Rank (1 = best)")
+                fig.update_xaxes(title="Walk-forward window index")
+                st.plotly_chart(fig, use_container_width=True)
+        except Exception as e:  # noqa: BLE001
+            st.info(f"Could not render rank trajectory: {e}")
+
+
 def render_cross_asset_graph() -> None:
     st.title("Cross-Asset Graph")
     st.caption(
@@ -1763,6 +1884,8 @@ PANELS = {
     "Regime Explorer": render_regime_explorer,
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
+    "Regime-Conditioned Graph": render_regime_graph,
+    "Signal Stability": render_signal_stability,
     "Backtest Arena": render_backtest_arena,
     "Custom Study": render_custom_study,
     "Agent Console": render_agent_console,
