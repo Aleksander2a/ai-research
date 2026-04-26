@@ -1,5 +1,9 @@
 # AutoSignal-X
 
+[![Live cockpit](https://img.shields.io/badge/cockpit-live-ff4b4b?logo=streamlit&logoColor=white)](https://autosignal-x.streamlit.app)
+[![Static snapshot](https://img.shields.io/badge/snapshot-github_pages-222?logo=github&logoColor=white)](https://aleksander2a.github.io/ai-research/)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 A 5-layer modular AI research system for discovering predictive structure in liquid daily ETF prices, paired with a multi-agent research loop that proposes hypotheses, designs and runs experiments, evaluates them under statistical rigor, and persists findings with full provenance.
 
 The system answers one question: **for which (regime, asset, method) combinations does a layered forecasting stack outperform the naive baseline on daily ETF prices, and is that outperformance statistically significant under Diebold–Mariano + a positive bootstrap CI on the loss difference?**
@@ -44,6 +48,15 @@ Summary:
 - **Signal layer** writes `reports/signals/signal_ranking.parquet`. **Agent reads through `tools.get_top_features(regime_id)`; cockpit reads.**
 - **Graph layer** writes `reports/graph/{edges,centrality}.parquet`. **Agent reads through `tools.get_centrality_summary()`; cockpit reads.**
 - **Agent layer** reads from all of the above; writes the `reports/agent/*` artifacts above. **Cockpit reads everything.**
+
+## Live demo
+
+Two zero-install ways to see AutoSignal-X without cloning:
+
+- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — multi-page HTML rendering of every cockpit panel from the latest committed artifacts. No runtime; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
+- **[Live cockpit](https://autosignal-x.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
+
+Both deployments run from this same repo on the same branch.
 
 ## Quick start
 
@@ -143,6 +156,8 @@ autosignalx chat index [--force-hashed]   Build the RAG index over current artif
 autosignalx chat status                   Inventory of indexed chunks by kind
 autosignalx chat ask "<question>"         One-shot grounded Q&A
 autosignalx chat eval                     Run the bundled grounding eval set
+
+autosignalx snapshot build                Render static HTML cockpit to reports/cockpit_snapshot/
 ```
 
 Make targets wrap each command (`make data`, `make baseline`, `make forecast`, `make regime`, `make signal`, `make graph`, `make agent`, `make scheduled-session`), plus `make sync`, `make test`, `make lint`, `make demo`, `make clean`.

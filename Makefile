@@ -62,6 +62,9 @@ chat-index:
 chat-eval:
 	uv run autosignalx chat eval
 
+snapshot:
+	uv run autosignalx snapshot build
+
 scheduled-session:
 	bash scripts/run_session.sh
 

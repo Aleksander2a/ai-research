@@ -352,6 +352,24 @@ Phase 3 replaces the original "Ask the Memory" panel with a **grounded RAG chat*
 
 The corpus loader covers all seven on-disk artifact kinds but treats every JSONL row as a single chunk -- long ledger entries are truncated to 1200 chars rather than split semantically. Hashed-bag embeddings used in replay mode are intentionally lossy (per-question retrieval is noisy on subtle queries); they exist so the deterministic CI / no-key reviewer path works, not as a replacement for real embeddings. Expanding the eval set, semantic chunking inside long ledger entries, and bundling a canned live-mode chat trace into `replay/` are the obvious follow-ups.
 
+# Phase 4 — Demo and deployment (post-submission)
+
+Phase 4 closes the gap between the local repo and reviewers who do not want to run anything. Two parallel deployment paths ship from the same `main` branch.
+
+### 4A — Static HTML snapshot (GitHub Pages)
+
+`autosignalx snapshot build` renders a multi-page, navigable HTML report from whatever artifacts currently sit under `reports/`. Every page (Overview / Forecasts / Regimes / Findings / Backtest / Agent / Chat corpus) is a self-contained HTML file under `reports/cockpit_snapshot/`, with Plotly figures pulled from CDN to keep file sizes small (each page is ~4-220 KB). The generator is robust against partial artifacts: every section gracefully degrades to a "not built yet" notice when its inputs are absent, so a fresh-clone snapshot still renders.
+
+A GitHub Actions workflow at `.github/workflows/pages.yml` runs the build on every push to `main` and publishes the result to GitHub Pages. The deployment is the **always-works** option: zero runtime infrastructure, zero environment variables, no key required.
+
+### 4B — Live deployed cockpit (Streamlit Community Cloud)
+
+A top-level `streamlit_app.py` shim sets `AUTOSIGNALX_REPLAY=true` when no `DEEPINFRA_API_KEY` is configured and execs the real app at `app/streamlit_app.py`. `.streamlit/config.toml` pins headless mode and the AutoSignal-X red theme; `.streamlit/secrets.toml.example` documents the optional DeepInfra credential surface for users who want live LLM calls in the deployed instance. The cloud instance reads pre-computed parquet/JSONL artifacts and does **not** retrain anything by default, fitting comfortably in the free-tier resource caps.
+
+### Honest scope of Phase 4
+
+The two deployments cover Phase 4A and 4B from the post-submission roadmap. Phase 4C ("reviewer-runnable custom-study runs in the deployed app") is intentionally not in scope -- a custom Phase 2 study can take minutes per asset on free-tier CPUs, which makes a poor demo. The deployed app exposes the Custom Study panel for read access (validate, list) but heavy steps (`data fetch`, `eval chronos`, `backtest run`) remain local-only via the CLI.
+
 ## Limitations
 
 - **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.
