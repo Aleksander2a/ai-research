@@ -1,153 +1,186 @@
 # AutoSignal-X
 
-> A modular AI research instrument for discovering predictive structure in dynamic markets.
+A 5-layer modular AI research system for discovering predictive structure in liquid daily ETF prices, paired with a multi-agent research loop that proposes hypotheses, designs and runs experiments, evaluates them under statistical rigor, and persists findings with full provenance.
 
-AutoSignal-X is a 5-layer research stack that combines foundation forecasting (**Chronos-2**), learned temporal representations (contrastive encoder + clustering), per-regime feature ranking (**HistGradientBoosting + permutation importance**), relational analysis (partial-correlation graphs + Granger causality), and an agentic discovery loop (**LangGraph + DeepInfra**) into a unified workflow for studying *what makes signals predictive, when, and why* under regime shifts.
+The system answers one question: **for which (regime, asset, method) combinations does a layered forecasting stack outperform the naive baseline on daily ETF prices, and is that outperformance statistically significant under Diebold–Mariano + a positive bootstrap CI on the loss difference?**
 
-This is a research artifact, not a product. The goal is to make scientific discovery *legible*: every layer's output is inspectable, every experiment is logged into a persistent ledger, and the agent's reasoning is rendered in a Streamlit cockpit.
+## Inputs and outputs
 
-## Status
+### Inputs
 
-**All 5 layers complete.** L1 Forecasting (Chronos-2 + baselines), L2 Representation (contrastive encoder + KMeans + HMM), L3 Reasoning (per-regime feature ranking), L4 Relational (GLASSO + Granger + centrality), L5 Agentic (LangGraph + DeepInfra + persistent ledger). See [REPORT.md](REPORT.md) for the full layer-by-layer findings; see [iteration plan](#iteration-plan) below for branch structure.
+| Source | What | Required | When |
+|---|---|---|---|
+| yfinance API | 8 ETFs (SPY, QQQ, IWM, GLD, TLT, EFA, EEM, HYG) and 4 macro signals (^TNX, ^VIX, DX-Y.NYB, CL=F), daily 2010-01-01 → 2025-12-31 | Yes | At `make data` (one-time per refresh; cached as parquet) |
+| DeepInfra API key | OpenAI-compatible LLM endpoint for the agent layer | No (replay mode works without it) | Per agent run |
+| `replay/agent_steps.jsonl` | Pre-recorded LLM responses keyed by `(round, step)` | No | Auto-used when no DeepInfra key is set |
+| `configs/default.yaml` | Date splits, horizon, regime / signal / agent hyperparameters | Yes | Read by every CLI subcommand |
 
-## Headline findings
+### Outputs (all persisted under `reports/` and committed to the repo)
 
-- **The agent overcame the naive baseline.** In a debate-mode session (Iter 12+), the multi-agent system autonomously composed findings from every prior layer (regime structure, per-regime feature importance, graph centrality) and proposed: *"chronos2_multivariate beats naive for TLT in regime 3 because TLT's high betweenness centrality makes it a bridge between market clusters whose dynamics the multivariate transformer can capture."* The proposal was tested through the standard walk-forward harness; the auto-promotion gate (Iter 10) ran Diebold-Mariano on the per-row losses and a block bootstrap on the loss difference. **Result: skill +5.4% MAE, DM p=0.040, bootstrap CI strictly above zero.** The finding (`f_9395cd1bd1be`) was auto-promoted to `reports/agent/findings.jsonl` with full provenance.
-- **Foundation models alone don't beat naive on liquid daily ETF prices** (the *unconditional* Phase 1 finding) -- Chronos-2 underperforms naive by 5-6% MAE; macro covariates don't help unconditionally. 80% intervals are well-calibrated (CRPS ≈ 2.9). The conditional finding above shows this negative result is regime/asset-specific, not universal.
-- **Macros dominate every regime's top features for direction prediction, but the dominant macro depends on the regime** -- 10Y yields in Regime 0, dollar index in Regimes 1+3, crude oil in Regime 2. *Conditional* macro selection is the right structure, not unconditional multi-covariate input.
-- **Cross-asset graph reveals typed roles**: SPY is the hub (eigenvector centrality 0.532), GLD is statistically isolated, TLT is the bridge (highest betweenness 0.429). The agent reasoned about TLT's bridge role to construct its winning hypothesis.
+| Artifact | What |
+|---|---|
+| `reports/ablations/*.parquet` | One file per forecasting method; long-format forecasts with the full forecast contract (target, prediction, intervals, origin, etc.) |
+| `reports/regimes/{kmeans,hmm,embeddings}.parquet` | Per-timestep regime labels from two detectors; raw contrastive embeddings |
+| `reports/signals/signal_ranking.parquet` | Per-(regime, feature) importance rankings |
+| `reports/graph/{edges,centrality}.parquet` | Cross-asset partial-correlation + Granger edges; per-node centrality |
+| `reports/agent/ledger.jsonl` | Append-only record of every agent step (propose / theorist / skeptic / experiment / critique / adjudicator / decide) |
+| `reports/agent/findings.jsonl` | Promoted findings (passed the DM + bootstrap gate); idempotent on hypothesis content with replication tracking |
+| `reports/agent/lessons.md` | Markdown summary appended per session, used as long-horizon memory for the next session |
+| `reports/agent/telemetry.jsonl` | Per-LLM-call cost, tokens, latency |
+| `reports/agent/trace_quality.jsonl` | Per-round LLM-as-judge scores on clarity / novelty / falsifiability / evidence-citing |
+| `reports/agent/self_critique.jsonl` | Agent's verdict on its own past findings against current evidence |
+| `reports/agent/generated_methods/` | Sandboxed Python code authored by the agent at runtime |
+| `replay/agent_steps.jsonl` | Recorded LLM responses (written when `--record-replay` is set; consumed in replay mode) |
 
-## Architecture
+### Information flow between layers
 
-| Layer | Purpose | Implementation |
-|---|---|---|
-| **L1 Forecasting** | Probabilistic point + interval forecasts | Chronos-2 (frozen), multivariate with covariates |
-| **L2 Representation** | Latent regime discovery | Small contrastive 1D-CNN encoder + KMeans (HMM as sanity-check baseline) |
-| **L3 Reasoning** | Per-regime feature relevance | HistGradientBoosting + permutation importance over technical + macro features |
-| **L4 Relational** | Cross-asset dependency structure | NetworkX + statsmodels: GLASSO partial-correlation + Granger causality + centrality |
-| **L5 Agentic** | Hypothesis generation, experiment orchestration | LangGraph state machine + deepagents; openevals/agentevals for trace quality |
+Each layer reads from prior layers exclusively through typed parquet/JSONL artifacts (no in-memory shared state). The diagram is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#data-flow); contracts are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#layer-interfaces-artifacts).
 
-All layers feed a shared evaluation harness (walk-forward, regime-stratified) and an append-only experiment ledger (`ledger.jsonl`) that serves as the system's persistent memory.
+Summary:
 
-## Data sources
-
-All free, all reproducible:
-
-- **ETF universe** via [yfinance](https://pypi.org/project/yfinance/): SPY, QQQ, IWM, GLD, TLT, EFA, EEM, HYG
-- **Macro signals** via yfinance: 10Y yield (`^TNX`), VIX (`^VIX`), Dollar index (`DX-Y.NYB`), Crude (`CL=F`)
-- **Window**: 2010-01-01 → 2025-12-31, daily frequency
+- **Data layer** writes `data/cache/{ohlcv,macro}.parquet`. **All other layers read from these.**
+- **Forecast layer** writes `reports/ablations/<method>.parquet`. **Eval, agent, cockpit read these.**
+- **Regime layer** writes `reports/regimes/{kmeans,hmm,embeddings}.parquet`. **Signal layer joins forecast_origin → regime_id; agent reads through `tools.context_snapshot()`; cockpit reads.**
+- **Signal layer** writes `reports/signals/signal_ranking.parquet`. **Agent reads through `tools.get_top_features(regime_id)`; cockpit reads.**
+- **Graph layer** writes `reports/graph/{edges,centrality}.parquet`. **Agent reads through `tools.get_centrality_summary()`; cockpit reads.**
+- **Agent layer** reads from all of the above; writes the `reports/agent/*` artifacts above. **Cockpit reads everything.**
 
 ## Quick start
-
-This project uses [`uv`](https://docs.astral.sh/uv/) for dependency management. Install it first if you don't have it:
-
-```bash
-# macOS / Linux
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Windows (PowerShell)
-irm https://astral.sh/uv/install.ps1 | iex
-```
-
-Then:
 
 ```bash
 git clone https://github.com/Aleksander2a/ai-research.git
 cd ai-research
 uv sync --all-extras
-uv run streamlit run app/streamlit_app.py
+make demo                      # or: uv run streamlit run app/streamlit_app.py
 ```
 
-Or, with `make`:
+The cockpit opens at `http://localhost:8501`. Every cockpit panel renders out-of-the-box because all artifacts are committed; a fresh clone shows real results without running anything. To regenerate any layer's artifacts, run the relevant CLI / Make target (table below).
 
-```bash
-make sync
-make demo
+## Architecture
+
+Five model layers plus an agent loop:
+
+| Layer | Purpose | Implementation |
+|---|---|---|
+| **L1 Forecasting** | Probabilistic point + interval forecasts | Frozen Chronos-2 (multivariate, with `past_covariates`) and three classical baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices) |
+| **L2 Representation** | Per-timestep regime labels | Contrastive 1D-CNN encoder (16-dim embeddings, 60-day windows, triplet loss) + KMeans on embeddings; Gaussian HMM on raw features as a parallel detector |
+| **L3 Reasoning** | Per-regime feature importance | `HistGradientBoostingClassifier` per regime + custom permutation importance |
+| **L4 Relational** | Cross-asset dependency structure | GLASSO partial correlations (`GraphicalLassoCV`) + Granger causality (statsmodels) + NetworkX centrality (degree / eigenvector / betweenness) |
+| **L5 Agentic** | Hypothesis generation, experimentation, statistical promotion | LangGraph state machine (debate mode: Theorist / Skeptic / Adjudicator with three different DeepInfra LLMs); experiment surface includes slicing cached forecasts, authoring methods via a constrained DSL, and executing sandboxed Python forecast functions |
+
+The agent has three escalating ways to author experiments:
+
+1. `slice_forecasts(method, asset, regime_id)` — measure on cached data.
+2. `spawn_method(spec)` — author a new method via a JSON DSL (compose primitives: base method + covariate subset + naive ensembling + asset/window filters).
+3. `spawn_method_code(spec)` — execute sandboxed Python `forecast_fn`, AST-validated, run in restricted globals.
+
+Auto-promotion: every experiment naming a non-naive method automatically runs the DM + bootstrap gate against naive on the same slice; if it passes (`p < 0.05`, skill > 0, bootstrap CI strictly above zero), the finding is appended to `reports/agent/findings.jsonl` with full provenance.
+
+For the data flow diagram, contract schemas, and per-layer wiring, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). For methodology and results, see [REPORT.md](REPORT.md).
+
+## Cockpit panels
+
+The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the full reviewer journey:
+
+1. **Overview** — system status, headline finding, layer grid.
+2. **Data** — cache inventory; ETF and macro time series.
+3. **Forecast Arena** — per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands.
+4. **Regime Explorer** — KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime.
+5. **Signal Discovery Lab** — per-regime feature ranking; cross-regime importance heatmap.
+6. **Cross-Asset Graph** — partial-correlation matrix; Granger edge table; centrality table.
+7. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
+8. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
+9. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
+10. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
+11. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+12. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
+13. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
+14. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
+15. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
+
+## CLI and Make targets
+
+```
+autosignalx version
+autosignalx status                  Layer status, data cache, ablation files
+
+autosignalx data fetch              Pull ETF + macro from yfinance
+autosignalx data status
+
+autosignalx eval baseline           Run naive + seasonal_naive + arima ablation
+autosignalx eval chronos            Run chronos2_univariate + chronos2_multivariate
+autosignalx eval status
+
+autosignalx regime fit              Train contrastive encoder + KMeans + HMM
+autosignalx regime status
+
+autosignalx signal rank             Per-regime feature importance via HistGradBoost
+autosignalx signal status
+
+autosignalx graph build             GLASSO + Granger + centrality
+autosignalx graph status
+
+autosignalx agent run [--mode single|debate] [--max-rounds N] [--fresh] [--record-replay]
+autosignalx agent score-traces      LLM-as-judge per-round quality scores
+autosignalx agent consolidate       Compress session into lessons.md
+autosignalx agent self-critique     Re-evaluate every promoted finding
+autosignalx agent status
 ```
 
-### Reviewer journey (5-minute walk through the cockpit)
+Make targets wrap each command (`make data`, `make baseline`, `make forecast`, `make regime`, `make signal`, `make graph`, `make agent`, `make scheduled-session`), plus `make sync`, `make test`, `make lint`, `make demo`, `make clean`.
 
-The Streamlit cockpit's sidebar lists 8 panels in the order to walk:
+## LLM provider
 
-1. **Overview** -- thesis, headline findings, layer status grid.
-2. **Data** -- ETF + macro substrate; cache inventory; normalized price chart.
-3. **Forecast Arena** -- 4 methods (naive, ARIMA, Chronos-2 univariate, Chronos-2 multivariate) on walk-forward; per-method overall + per-regime stratified metrics; uncertainty bands per asset.
-4. **Regime Explorer** -- contrastive encoder + KMeans regimes vs Gaussian HMM baseline; PCA-2D scatter colored by regime.
-5. **Signal Discovery Lab** -- per-regime feature importance ranking via permutation importance; cross-regime importance heatmap.
-6. **Cross-Asset Graph** -- partial-correlation matrix, Granger edges, NetworkX centrality (degree / eigenvector / betweenness).
-7. **Agent Console** -- chat-style timeline of the LangGraph agent's research session: propose → experiment → critique → decide, round after round, reading from the recorded live trace.
-8. **Ask the Memory** -- free-form query against the ledger; LLM-answered in live mode, deterministic keyword search in replay mode.
-
-### LLM provider (optional)
-
-The agentic layer (Iter 7+) uses [DeepInfra](https://deepinfra.com/) (OpenAI-compatible) for open-source LLM inference. Without an API key, the system runs in **deterministic replay mode** -- the agent panel plays back pre-recorded traces from `replay/agent_steps.jsonl` (committed to the repo from a live recorded session), so reviewers can experience the full cockpit without provisioning an account.
-
-To use live mode, copy `.env.example` to `.env` and set:
+The agent layer uses [DeepInfra](https://deepinfra.com/) (OpenAI-compatible endpoint at `https://api.deepinfra.com/v1/openai`) via `langchain_openai.ChatOpenAI`. Three roles map to three env-configurable models:
 
 ```bash
 DEEPINFRA_API_KEY=<your key>
-DEEPINFRA_MODEL_PROPOSER=moonshotai/Kimi-K2.6     # or any OpenAI-compatible model on DeepInfra
-DEEPINFRA_MODEL_CRITIC=zai-org/GLM-4.7-Flash
-DEEPINFRA_MODEL_CHAT=deepseek-ai/DeepSeek-V4-Pro
+DEEPINFRA_MODEL_THEORIST=moonshotai/Kimi-K2.6
+DEEPINFRA_MODEL_SKEPTIC=zai-org/GLM-5.1
+DEEPINFRA_MODEL_ADJUDICATOR=deepseek-ai/DeepSeek-V4-Pro
 ```
 
-Then `make agent` (or `uv run autosignalx agent run --record-replay`) runs the loop live and appends to the replay file.
+Per-call responses are content-hash cached on disk (`reports/agent/llm_cache/`); re-runs of the same prompt are free and deterministic. Live calls record `(model, role, step, round, prompt_tokens, completion_tokens, latency_ms, cost_usd, session_id)` to `reports/agent/telemetry.jsonl`. Cost defaults are in `agent/telemetry.py`; override per-model via `DEEPINFRA_PRICE_<MODEL>_IN` / `_OUT` env vars (USD per 1M tokens).
 
-### Windows note
+**Without a DeepInfra key** (or with `AUTOSIGNALX_REPLAY=true`), the agent runs in deterministic replay mode against `replay/agent_steps.jsonl`; the recorded session is committed to the repo so reviewers see the same trace without provisioning anything.
 
-If `uv` reports a cross-drive cache error during install, set the cache to a directory on the same drive as the repo:
+## Scheduled execution
 
-```bash
-export UV_CACHE_DIR="$PWD/.uv-cache"
-uv sync --all-extras
-```
+`scripts/run_session.sh` (bash, cron) and `scripts/run_session.ps1` (PowerShell, Windows Task Scheduler) wrap a full session: `agent run --mode debate --record-replay` → `agent score-traces` → `agent consolidate`. Configurable via `AUTOSIGNALX_ROUNDS` and `AUTOSIGNALX_MODE` env vars. Cron example baked into the script's docstring.
 
-## Documentation map
-
-- **README.md** (this file) — project framing, headline findings, reviewer journey, quick start.
-- **[REPORT.md](REPORT.md)** — layer-by-layer findings narrative; executive summary at top, per-iteration sections that grew with the codebase.
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — factual implementation reference: data-flow diagram, contracts between layers, per-layer wiring, the agent loop.
+Cross-session aggregation in `agent/sessions.py` produces per-session and cumulative productivity views in the Sessions panel.
 
 ## Repository layout
 
 ```
-src/autosignalx/        # Library — one module per layer
-  data/                 # Pullers, splits, leakage tests           (Iter 1)
-  eval/                 # Walk-forward harness, metrics, ablations (Iter 2)
-  forecast/             # Chronos-2 + classical baselines          (Iter 3)
-  regime/               # Contrastive encoder + clustering         (Iter 4)
-  signal/               # Feature engineering + per-regime ranking (Iter 5)
-  graph/                # Partial-corr + Granger + centrality      (Iter 6)
-  agent/                # LangGraph state machine + ledger         (Iter 7)
-  cli.py                # Typer entrypoint dispatching to each layer
-  config.py             # Pydantic settings (paths, env, flags)
-app/                    # Streamlit research cockpit (one panel per layer)
-configs/                # YAML experiment configs
-tests/                  # Pytest — leakage, contracts, smoke
-data/                   # (gitignored) cached parquet
-reports/                # Per-run artifacts; runs/ is gitignored
-replay/                 # Pre-recorded agent traces for no-LLM-key mode
-REPORT.md               # Running research report — findings as iterations land
+src/autosignalx/         Library (one module per concern)
+  data/                  yfinance pulls, parquet cache, walk-forward splits
+  eval/                  Forecast contract, harness, metrics, DM/bootstrap significance
+  forecast/              Baselines and Chronos-2
+  regime/                Contrastive encoder, KMeans, HMM, market features
+  signal/                Feature engineering, per-regime ranking
+  graph/                 GLASSO, Granger, centrality, build orchestration
+  agent/                 State machine, debate, tools, ledger, findings, lineage,
+                         memory, telemetry, sessions, trace_eval, self_critique,
+                         specs, codegen
+  cli.py                 Typer entrypoint (registers every layer's sub-app)
+  config.py              Pydantic settings, .env loading, YAML config reader
+app/                     Streamlit cockpit (15 panels)
+configs/                 YAML experiment configs
+tests/                   146 pytest tests
+docs/ARCHITECTURE.md     Implementation reference
+data/                    (gitignored cache, reproducible from `make data`)
+reports/                 Persisted artifacts (forecasts, regimes, signals, graph, agent)
+replay/                  Recorded LLM responses for no-key reviewer mode
+scripts/                 run_session.sh / .ps1 for cron / Task Scheduler
+REPORT.md                Research questions, methodology, results
 ```
 
-## Iteration plan
+## Documentation
 
-Each iteration ships a runnable system and merges into the integration branch with `--no-ff`.
-
-| # | Branch | Theme |
-|---|---|---|
-| 0 | `iter-0-scaffold` | Repository structure, tooling, cockpit shell |
-| 1 | `iter-1-data` | Reproducible ETF + macro pipeline with leakage tests |
-| 2 | `iter-2-baselines` | Walk-forward harness with naive + ARIMA |
-| 3 | `iter-3-chronos2` | Chronos-2 multivariate forecasting with covariates |
-| 4 | `iter-4-regime` | Contrastive temporal encoder + regime clustering |
-| 5 | `iter-5-signal` | Regime-aware feature ranking (HistGradientBoosting + permutation importance) |
-| 6 | `iter-6-graph` | Partial-correlation + Granger cross-asset graph |
-| 7 | `iter-7-agent` | LangGraph agentic research loop + persistent ledger |
-| 8 | `iter-8-cockpit` | Polished cockpit with reviewer-journey navigation |
-| 9 | `iter-9-report` | Consolidated report + reproducibility check |
-
-If time runs short, later iterations are skippable — each commit on the integration branch leaves a complete, demonstrable system.
+- **README.md** (this file) — system overview, inputs/outputs, panels, CLI, repository layout.
+- **[REPORT.md](REPORT.md)** — research questions, methodology, results, limitations.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — implementation: data flow, contracts, per-layer wiring, agent loop, sandbox model.
 
 ## License
 

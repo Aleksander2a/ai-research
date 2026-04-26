@@ -1,393 +1,427 @@
 # AutoSignal-X — Architecture
 
-> Factual implementation reference. How the layers fit together, what
-> contracts they share, how data flows from raw fetch to the cockpit
-> and the agent. For findings narrative see [REPORT.md](../REPORT.md);
-> for project framing see [README.md](../README.md).
+Implementation reference: data flow, contracts, per-layer wiring, agent loop, sandbox model. For research questions and results see [REPORT.md](../REPORT.md); for project framing see [README.md](../README.md).
 
 ## Design principle
 
-Each layer is **independent**, **persists its outputs as typed parquet/JSONL artifacts** under `reports/`, and **reads from prior layers via those artifacts** — never via in-memory state. Three consequences:
+Each layer is independent, persists its outputs as typed parquet/JSONL artifacts under `reports/`, and reads from prior layers exclusively through those artifacts. There is no in-memory shared state between layers, and no implicit global. The cockpit and the agent are read-only consumers of the same artifacts.
 
-1. You can run, re-run, or skip any single layer without touching the others.
-2. The cockpit and the agent are **thin readers** over the same artifacts; everything they show is reproducible from `reports/` alone.
-3. Iteration boundaries (`iter-N-*` branches in git history) line up with layer boundaries, because each iteration adds a new layer + writes its artifact contract + adds a Streamlit panel that reads from it.
+Three consequences:
 
-The forecast DataFrame schema (`autosignalx.eval.contracts.FORECAST_COLUMNS_REQUIRED`) is the **load-bearing contract**: every forecasting method (baselines, Chronos-2, future regime-conditional ensembles) emits frames matching it. Regime labels, signal rankings, graph edges, and agent ledger entries are the supporting contracts.
+1. Any layer can be re-run, skipped, or replaced without touching the others.
+2. The cockpit and the agent show only what is reproducible from `reports/` on disk.
+3. The forecast DataFrame schema (`autosignalx.eval.contracts.FORECAST_COLUMNS_REQUIRED`) is the **load-bearing contract**. Every forecasting method satisfies it, including agent-authored methods.
 
----
+## Inputs and outputs
 
-## Data flow
+### System inputs
+
+| Input | Origin | Required | Persisted to |
+|---|---|---|---|
+| ETF OHLCV (8 tickers) | yfinance API | Yes | `data/cache/ohlcv.parquet` |
+| Macro signals (4 signals) | yfinance API | Yes | `data/cache/macro.parquet` |
+| Experiment hyperparameters | `configs/default.yaml` | Yes (read by every CLI) | n/a |
+| DeepInfra API key | `.env` (`DEEPINFRA_API_KEY`) | No (replay mode works without) | n/a |
+| Recorded LLM responses | `replay/agent_steps.jsonl` | No (auto-used in replay mode) | n/a |
+
+### System outputs (everything persisted under `reports/`)
+
+| Output | Path | Producer | Schema (key columns) |
+|---|---|---|---|
+| Per-method forecasts | `reports/ablations/<method>.parquet` | `eval/cli.py` (baseline / chronos), `agent.specs.execute`, `agent.codegen.execute_code_spec` | `(timestamp, asset, forecast_origin, horizon, method, prediction, origin_value, target, lower?, upper?)` |
+| KMeans regime labels | `reports/regimes/kmeans.parquet` | `regime/cli.py` | `(timestamp, regime_id int, method "kmeans_contrastive")` |
+| HMM regime labels | `reports/regimes/hmm.parquet` | `regime/cli.py` | `(timestamp, regime_id int, method "hmm_gaussian")` |
+| Contrastive embeddings | `reports/regimes/embeddings.parquet` | `regime/cli.py` | `(timestamp, c0..c15)` |
+| Per-regime feature ranking | `reports/signals/signal_ranking.parquet` | `signal/cli.py` | `(regime_id, feature, importance, importance_std, n_samples, rank)` |
+| Cross-asset graph edges | `reports/graph/edges.parquet` | `graph/cli.py` | `(source, target, edge_type, weight, p_value?, best_lag?)` |
+| Centrality | `reports/graph/centrality.parquet` | `graph/cli.py` | `(node, degree_centrality, eigenvector_centrality, betweenness_centrality)` |
+| Agent ledger | `reports/agent/ledger.jsonl` | `agent.graph.run`, `agent.debate.run_debate` | `(round, step, content, ts, session_id)` |
+| Promoted findings | `reports/agent/findings.jsonl` | `agent/graph.py:experiment_node` (auto-promotion) | `(id, hypothesis, method, filters, evidence, agent_confidence, round, session_id, promoted_at, parent_hypothesis_ids, replication_count, replications)` |
+| Lessons (long-horizon memory) | `reports/agent/lessons.md` | `agent/cli.py:consolidate_cmd` | Markdown sections per session |
+| Telemetry | `reports/agent/telemetry.jsonl` | `agent/llm.py:LiveProvider.chat` | `(ts, model, role, step, round, prompt_tokens, completion_tokens, latency_ms, cost_usd, session_id)` |
+| Trace quality | `reports/agent/trace_quality.jsonl` | `agent/cli.py:score_traces_cmd` | `(round, clarity, novelty, falsifiability, evidence_citing, rationale, ts, session_id)` |
+| Self-critique | `reports/agent/self_critique.jsonl` | `agent/cli.py:self_critique_cmd` | `(finding_id, current_state, rationale, ts)` |
+| Generated code | `reports/agent/generated_methods/<name>.{py,json}` | `agent/codegen.py:execute_code_spec` | Python source + metadata JSON |
+| Recorded LLM trace | `replay/agent_steps.jsonl` | `agent/llm.py:LiveProvider.chat` (when `record_replay=True`) | `(round, step, content)` per call |
+
+### Information passed between layers
 
 ```mermaid
 flowchart TD
-  YF["yfinance API"] --> DC["data/cache/&#123;ohlcv,macro&#125;.parquet"]
+  YF["yfinance API"] --> DC["data/cache/{ohlcv,macro}.parquet"]
   DC --> EH["eval harness (walk-forward)"]
   DC --> RFP["regime feature pipeline"]
   DC --> SFP["signal feature engine"]
   DC --> GFP["graph build"]
 
-  EH --> BL["forecast/baselines.py<br/>(naive, seasonal, ARIMA)"]
-  EH --> CH["forecast/chronos2.py<br/>(univariate + multivariate)"]
+  EH --> BL["forecast/baselines.py"]
+  EH --> CH["forecast/chronos2.py"]
   BL --> AB["reports/ablations/baseline.parquet"]
   CH --> AB2["reports/ablations/chronos2.parquet"]
 
-  RFP --> RE["regime/encoder.py<br/>(contrastive 1D-CNN)"]
-  RE --> KM["regime/cluster.py<br/>(KMeans on embeddings)"]
-  RFP --> HM["regime/cluster.py<br/>(HMM on raw features)"]
-  KM --> RL["reports/regimes/kmeans.parquet<br/>+ embeddings.parquet"]
-  HM --> RL2["reports/regimes/hmm.parquet"]
+  RFP --> RE["regime/encoder.py + cluster.py"]
+  RE --> RL["reports/regimes/{kmeans,hmm,embeddings}.parquet"]
 
-  SFP --> SR["signal/ranking.py<br/>(HistGradBoost + perm imp.)"]
+  SFP --> SR["signal/ranking.py"]
   RL -.regime labels.-> SR
   SR --> SS["reports/signals/signal_ranking.parquet"]
 
-  GFP --> GLA["graph/correlation.py<br/>(GLASSO partial-corr)"]
-  GFP --> GR["graph/causality.py<br/>(Granger tests)"]
-  GLA --> GE["reports/graph/edges.parquet"]
-  GR --> GE
-  GE --> CE["graph/centrality.py<br/>(NetworkX)"]
-  CE --> CT["reports/graph/centrality.parquet"]
+  GFP --> GLA["graph/correlation.py + causality.py + centrality.py"]
+  GLA --> GE["reports/graph/{edges,centrality}.parquet"]
 
-  AB --> AG["agent/tools.py<br/>(slice_forecasts,<br/> context_snapshot)"]
+  AB --> AG["agent/tools.py<br/>(slice / test / spawn / snapshot)"]
   AB2 --> AG
   RL --> AG
   SS --> AG
-  CT --> AG
+  GE --> AG
 
-  AG --> SM["agent/graph.py<br/>(LangGraph state machine)"]
+  AG --> SM["agent/graph.py + debate.py<br/>(LangGraph state machine)"]
   LLM["DeepInfra LLM<br/>(or replay/agent_steps.jsonl)"] --> SM
-  SM --> LJ["reports/agent/ledger.jsonl"]
+  SM --> AGW["reports/agent/{ledger,findings,lessons,<br/>telemetry,trace_quality,self_critique}.jsonl"]
+  SM --> AGENB["reports/ablations/<agent-authored>.parquet<br/>(spawn_method / spawn_method_code)"]
 
-  AB --> CK["app/streamlit_app.py<br/>(cockpit, 8 panels)"]
+  AB --> CK["app/streamlit_app.py<br/>(15 cockpit panels)"]
   AB2 --> CK
   RL --> CK
   SS --> CK
   GE --> CK
-  CT --> CK
-  LJ --> CK
+  AGW --> CK
+  AGENB --> CK
 ```
 
-`reports/` artifacts are committed to the repo, so the cockpit and agent both work out-of-the-box on a fresh clone.
+**Per-edge contract:** every arrow above represents a typed parquet/JSONL read; no direct in-process passing of Python objects between layers.
 
----
+## Layer interfaces (artifact schemas)
 
-## Contracts
+### `data/cache/ohlcv.parquet`
 
-These are the typed boundaries between layers. Every layer reads against the contracts; tests assert them; schema violations raise at the persistence boundary (`cache.write_*`, `harness.run_walk_forward`).
+Long format. Required columns asserted by `data/schema.py:assert_ohlcv_schema`:
 
-### OHLCV (data layer output, all subsequent layers' input)
-
-`autosignalx.data.schema.OHLCV_COLUMNS`
-
-| column | type | semantics |
-|---|---|---|
-| `timestamp` | `datetime64[ns]` | trading day (no tz) |
-| `asset` | `string` | ticker (e.g., `SPY`) |
-| `open`/`high`/`low`/`close` | `float64` | raw OHLC |
-| `adj_close` | `float64` | adjusted close (target of forecasts) |
-| `volume` | `float64` | shares traded |
-| `returns` | `float64` | `adj_close.pct_change()` |
-
-Long format. Per-asset, timestamps are strictly monotonic increasing (asserted in `assert_ohlcv_schema`).
-
-### Macro
-
-`autosignalx.data.schema.MACRO_COLUMNS`
-
-| column | type | semantics |
-|---|---|---|
-| `timestamp` | `datetime64[ns]` | trading day |
-| `signal` | `string` | symbol (e.g., `^VIX`, `^TNX`, `DX-Y.NYB`, `CL=F`) |
-| `value` | `float64` | level |
-
-### Forecast (the load-bearing contract)
-
-`autosignalx.eval.contracts.FORECAST_COLUMNS_REQUIRED`
-
-| column | type | semantics |
-|---|---|---|
-| `timestamp` | `datetime64[ns]` | target day the forecast is **for** |
-| `asset` | `string` | ticker |
-| `forecast_origin` | `datetime64[ns]` | day the forecast was **made**; must be `< timestamp` (no leakage) |
-| `horizon` | `int` | days from origin to target |
-| `method` | `string` | identifier (e.g., `naive`, `chronos2_multivariate`) |
-| `prediction` | `float64` | point forecast in `adj_close` units |
-| `origin_value` | `float64` | `adj_close` at `forecast_origin` (used for directional metrics) |
-| `target` | `float64` | realized `adj_close` at `timestamp` |
-
-Optional columns (`FORECAST_COLUMNS_OPTIONAL`): `lower`, `upper` (interval bounds for probabilistic methods), `regime_id` (joined post-hoc).
-
-`assert_forecast_schema` enforces required columns + leakage check + non-negative horizons. Every commit of a new forecasting method passes this, so downstream consumers (metrics, cockpit, agent) read uniformly across methods.
-
-### Regime labels
-
-`autosignalx.regime.labels.load_regime_labels(method)` returns:
-
-| column | type | semantics |
-|---|---|---|
-| `timestamp` | `datetime64[ns]` | day |
-| `regime_id` | `int` | regime label (0..n-1) |
-| `method` | `string` | `"kmeans_contrastive"` or `"hmm_gaussian"` |
-
-Joined into forecasts on `forecast_origin → timestamp` via `regime.labels.add_regime_to_forecasts`.
-
-### Signal ranking
-
-`reports/signals/signal_ranking.parquet`:
-
-| column | type | semantics |
-|---|---|---|
-| `regime_id` | `int` | which regime this row applies to |
-| `feature` | `string` | feature name (e.g., `momentum_60`, `macro_^VIX_level`) |
-| `importance` | `float` | base_acc − mean(shuffled_acc) over `n_repeats` permutations |
-| `importance_std` | `float` | std of the above across repeats |
-| `n_samples` | `int` | rows used to fit the per-regime classifier |
-| `rank` | `int` | 1 = most important within the regime |
-
-### Graph edges
-
-`reports/graph/edges.parquet` (mixed undirected + directed):
-
-| column | type | semantics |
-|---|---|---|
-| `source` / `target` | `string` | node tickers |
-| `edge_type` | `string` | `"partial_corr"` (undirected) or `"granger"` (directed) |
-| `weight` | `float` | partial correlation in [−1, 1], or `−log10(p)` for Granger |
-| `p_value` | `float` (Granger only) | minimum p across lags |
-| `best_lag` | `int` (Granger only) | lag that gave the minimum p |
-
-### Centrality
-
-`reports/graph/centrality.parquet`: `(node, degree_centrality, eigenvector_centrality, betweenness_centrality)`.
-
-### Agent ledger
-
-`reports/agent/ledger.jsonl` (append-only, one JSON per line):
-
-```json
-{"round": 4, "step": "propose", "content": {"hypothesis": "...", "experiment": {"type": "slice_forecasts", "params": {...}}}, "ts": "2026-04-25T22:55:13+00:00"}
+```
+timestamp           datetime64[ns]   trading day (no tz)
+asset               string           ticker (e.g., SPY)
+open / high / low / close   float64
+adj_close           float64          forecast target
+volume              float64
+returns             float64          adj_close.pct_change()
 ```
 
-`step` ∈ `{"propose", "experiment", "critique", "decide"}`. The `content` shape varies by step (dict for propose/experiment/decide, string for critique).
+Per-asset timestamps strictly monotonic increasing.
 
----
+### `data/cache/macro.parquet`
 
-## Per-layer wiring
+```
+timestamp     datetime64[ns]
+signal        string           ^TNX | ^VIX | DX-Y.NYB | CL=F
+value         float64
+```
 
-Every layer follows the same five-piece pattern: **library code** ⟶ **CLI subcommand** ⟶ **Makefile target** ⟶ **artifact persisted under `reports/`** ⟶ **Streamlit panel reads it back**. Each layer registers its CLI sub-app via `app.add_typer(...)` in `src/autosignalx/cli.py`, so the top-level `autosignalx` command discovers everything.
+Per-signal timestamps strictly monotonic increasing.
 
-### Iter 1 — Data layer (`src/autosignalx/data/`)
+### `reports/ablations/<method>.parquet` (forecast contract)
 
-| concern | file |
+Required columns enforced by `eval/contracts.py:assert_forecast_schema`:
+
+```
+timestamp           datetime64[ns]   target trading day
+asset               string
+forecast_origin     datetime64[ns]   < timestamp (no leakage)
+horizon             int              days from origin to target
+method              string           e.g., naive, chronos2_multivariate
+prediction          float64          adj_close-units
+origin_value        float64          adj_close at forecast_origin
+target              float64          realized adj_close
+lower (optional)    float64          10% quantile
+upper (optional)    float64          90% quantile
+regime_id (optional) int             populated by regime.add_regime_to_forecasts
+```
+
+### `reports/regimes/`
+
+```
+kmeans.parquet      (timestamp, regime_id int, method="kmeans_contrastive")
+hmm.parquet         (timestamp, regime_id int, method="hmm_gaussian")
+embeddings.parquet  (timestamp, c0..c15)   contrastive embedding per window
+```
+
+Window-aligned: each `kmeans.parquet` row's `regime_id` labels the timestamp at the end of a 60-day window.
+
+### `reports/signals/signal_ranking.parquet`
+
+```
+regime_id        int
+feature          string
+importance       float    base_acc - mean shuffled_acc, n_repeats=2
+importance_std   float
+n_samples        int
+rank             int      1 = most important within the regime
+```
+
+### `reports/graph/`
+
+```
+edges.parquet
+  source        string   ticker
+  target        string   ticker
+  edge_type     string   "partial_corr" | "granger"
+  weight        float64  partial corr in [-1, 1] | -log10(p) for Granger
+  p_value       float64  (Granger only)
+  best_lag      int      (Granger only)
+
+centrality.parquet
+  node                       string
+  degree_centrality          float64
+  eigenvector_centrality     float64
+  betweenness_centrality     float64
+```
+
+### `reports/agent/`
+
+```
+ledger.jsonl            One JSON per step
+                        (round, step, content, ts, session_id)
+                        step ∈ {propose, theorist, skeptic, experiment,
+                                critique, adjudicator, decide}
+
+findings.jsonl          Promoted hypotheses (passed DM + bootstrap gate)
+                        (id, hypothesis, method, filters, evidence,
+                         agent_confidence, round, session_id, promoted_at,
+                         parent_hypothesis_ids, replication_count, replications)
+
+lessons.md              Markdown sections per session, --- separated
+                        Used as long-horizon memory by next session
+
+telemetry.jsonl         (ts, model, role, step, round,
+                         prompt_tokens, completion_tokens, total_tokens,
+                         latency_ms, cost_usd, session_id)
+
+trace_quality.jsonl     (round, clarity, novelty, falsifiability,
+                         evidence_citing, rationale, ts, session_id)
+
+self_critique.jsonl     (finding_id, current_state, rationale, ts)
+                        current_state ∈ {reinforced, unchanged,
+                                          weakened, refuted}
+
+generated_methods/      <name>.py + <name>.json
+                        Sandboxed code authored at runtime + metadata
+
+llm_cache/              content-hash-keyed plaintext (gitignored)
+```
+
+### `replay/agent_steps.jsonl`
+
+Pre-recorded LLM responses, one JSON per line:
+
+```
+(round int, step string, content string)
+```
+
+Used in replay mode (no API key) to walk through a recorded session deterministically.
+
+## Layer-by-layer
+
+### `data/`
+
+Pulls from yfinance, normalizes to long format, persists parquet, defines walk-forward and static splits.
+
+| File | Purpose |
 |---|---|
-| schema + assertions | `schema.py` |
-| parquet I/O | `cache.py` |
-| yfinance pulls | `fetch.py` |
-| walk-forward / static splits | `splits.py` |
-| convenience pivots | `loader.py` |
-| `autosignalx data fetch` / `status` | `cli.py` |
+| `schema.py` | Column contracts and `assert_*` validators |
+| `cache.py` | Parquet read/write at the persistence boundary; `cache_status()` inventory |
+| `fetch.py` | yfinance pulls; normalizes MultiIndex columns from yfinance |
+| `splits.py` | `WalkForwardWindow` (rejects `train_end ≥ forecast_start` at construction); `StaticSplit`; `walk_forward_windows(val_end, test_end, horizon_days, step_days)` |
+| `loader.py` | Wide-format pivots: `load_returns_wide()`, `load_close_wide()`, `load_macro_wide()` |
+| `cli.py` | `autosignalx data fetch` / `status` |
 
-Run: `make data` → `data fetch` → writes `data/cache/{ohlcv,macro}.parquet`. Cockpit panel: **Data**.
+### `eval/`
 
-### Iter 2 — Evaluation harness (`src/autosignalx/eval/`)
-
-| concern | file |
+| File | Purpose |
 |---|---|
-| forecast contract + `assert_forecast_schema` | `contracts.py` |
-| MAE, MAPE, dir-acc, skill, CRPS | `metrics.py` |
-| `run_walk_forward`, `ablation`, `summarize`, `add_skill_score` | `harness.py` |
-| `autosignalx eval baseline` / `chronos` / `status` | `cli.py` |
+| `contracts.py` | `FORECAST_COLUMNS_REQUIRED`, `assert_forecast_schema` (leakage check, non-negative horizons) |
+| `metrics.py` | `mae`, `mape`, `directional_accuracy`, `skill_score`, `crps_from_quantiles` |
+| `harness.py` | `run_walk_forward(method_name, forecast_fn, ohlcv, windows)`, `ablation`, `summarize`, `add_skill_score` |
+| `significance.py` | `dm_test(loss_a, loss_b, horizon)` with Newey–West HAC variance; `block_bootstrap_ci`; `is_promotable` (DM + skill + bootstrap gate) |
+| `cli.py` | `autosignalx eval baseline` / `chronos` / `status` |
 
-The harness defines the `ForecastFn` callable contract:
+### `forecast/`
+
+| File | Purpose |
+|---|---|
+| `baselines.py` | `naive_forecast`, `seasonal_naive_forecast(season_days=252)`, `arima_forecast(order=(1,1,1))` (on log adj_close) |
+| `chronos2.py` | Lazy-loaded `Chronos2Pipeline` (cached via `lru_cache`); `chronos2_univariate`; `make_chronos2_multivariate(macro)` closure factory; `batched_ablation(method_specs, ohlcv, macro, windows, horizon_days)` for fast bulk runs |
+
+The shared **ForecastFn contract** every method satisfies:
 
 ```python
 ForecastFn = Callable[
     [pd.DataFrame, pd.Timestamp, list[pd.Timestamp]],
-    pd.DataFrame,  # cols: timestamp, prediction (+ optional lower/upper)
+    pd.DataFrame  # with at least: timestamp, prediction (and optional lower/upper)
 ]
 ```
 
-Every forecasting method satisfies it. The harness wraps it with the (window, asset) loop and the join-with-realized-target step.
+### `regime/`
 
-### Iter 3 — Forecasting layer (`src/autosignalx/forecast/`)
-
-| concern | file |
+| File | Purpose |
 |---|---|
-| naive / seasonal / ARIMA | `baselines.py` |
-| Chronos-2 univariate, multivariate (via past_covariates), batched ablation runner | `chronos2.py` |
+| `encoder.py` | `RegimeEncoder` (1D-CNN, 16-dim embedding from 60-day windows); `train_encoder` (triplet-loss training); `make_windows` (sliding-window utility) |
+| `cluster.py` | `kmeans_regimes(embeddings, n_regimes, seed)`; `hmm_regimes(features, n_regimes, seed, n_iter)` |
+| `labels.py` | `build_market_features` (SPY+QQQ returns + 4 macros, standardized); `fit_and_save` (orchestration); `load_regime_labels(method)`; `add_regime_to_forecasts(forecasts, method)` |
+| `cli.py` | `autosignalx regime fit` / `status` |
 
-Chronos-2 is loaded once per session via `functools.lru_cache`. The `batched_ablation` function bypasses the per-call harness loop and feeds 700+ inputs to one `predict_quantiles` call, amortizing the model's forward-pass cost.
+### `signal/`
 
-Outputs: `reports/ablations/baseline.parquet`, `reports/ablations/chronos2.parquet`. Cockpit panel: **Forecast Arena**.
-
-### Iter 4 — Representation layer (`src/autosignalx/regime/`)
-
-| concern | file |
+| File | Purpose |
 |---|---|
-| 1D-CNN encoder + triplet-loss training | `encoder.py` |
-| KMeans on embeddings, Gaussian HMM on raw features | `cluster.py` |
-| market features + orchestration + persistence | `labels.py` |
-| `autosignalx regime fit` / `status` | `cli.py` |
+| `features.py` | `compute_rsi(prices, window)`; `compute_macd_signal(prices, fast, slow, signal)`; `build_features_target(asset_ohlcv, macro_wide, horizon_days)` (8 technical + 8 macro features + binary direction target); `feature_columns(df)` |
+| `ranking.py` | `_permutation_importance(predict_fn, X, y, n_repeats, seed)` (one-feature-at-a-time shuffle); `rank_features_per_regime(features_df, regime_labels, feature_cols, ...)` (HistGradientBoostingClassifier per regime) |
+| `cli.py` | `autosignalx signal rank` / `status` |
 
-`labels.fit_and_save(...)` runs end-to-end: builds the SPY/QQQ + macro feature matrix, standardizes, trains the encoder for 25 epochs with triplet loss (positive=adjacent window, negative=distant window), runs KMeans on embeddings, runs HMM on raw features, persists three parquets.
+### `graph/`
 
-Outputs: `reports/regimes/{kmeans,hmm,embeddings}.parquet`. Cockpit panel: **Regime Explorer**.
-
-### Iter 5 — Reasoning layer (`src/autosignalx/signal/`)
-
-| concern | file |
+| File | Purpose |
 |---|---|
-| RSI, MACD, technical + macro features, target | `features.py` |
-| per-regime classifier fit + permutation importance | `ranking.py` |
-| `autosignalx signal rank` / `status` | `cli.py` |
+| `correlation.py` | `partial_correlation_edges(returns, threshold)` via `sklearn.covariance.GraphicalLassoCV(cv=3)` |
+| `causality.py` | `granger_edges(returns, max_lag, p_threshold)` via `statsmodels.tsa.stattools.grangercausalitytests`; takes min p across lags |
+| `centrality.py` | `compute_centrality(edges, node_set, directed)` via NetworkX (degree / eigenvector / betweenness) |
+| `build.py` | `build_and_save(p_threshold, max_lag, pcorr_threshold)` orchestration |
+| `cli.py` | `autosignalx graph build` / `status` |
 
-`ranking.rank_features_per_regime(features_df, regime_labels, ...)`:
-1. Joins features with regime labels on timestamp.
-2. For each regime: subsamples to ≤ N rows, fits `HistGradientBoostingClassifier(max_iter=200, lr=0.05, max_depth=4)`.
-3. Custom permutation importance: shuffle one feature at a time, measure accuracy drop, repeat.
+### `agent/`
 
-Outputs: `reports/signals/signal_ranking.parquet`. Cockpit panel: **Signal Discovery Lab**.
-
-### Iter 6 — Relational layer (`src/autosignalx/graph/`)
-
-| concern | file |
+| File | Purpose |
 |---|---|
-| GLASSO partial correlations | `correlation.py` |
-| Granger causality between asset pairs | `causality.py` |
-| NetworkX-based degree / eigenvector / betweenness | `centrality.py` |
-| orchestration (load returns, build all, persist) | `build.py` |
-| `autosignalx graph build` / `status` | `cli.py` |
-
-Outputs: `reports/graph/{edges,centrality}.parquet`. Cockpit panel: **Cross-Asset Graph**.
-
-### Iter 7 — Agentic layer (`src/autosignalx/agent/`)
-
-The agent is the only layer that *consumes* every other layer's artifacts and that *writes its own structured memory*. See [Agent loop](#agent-loop) below for detail.
-
-| concern | file |
-|---|---|
-| TypedDict for the LangGraph state | `state.py` |
-| append-only JSONL persistence + summary | `ledger.py` |
-| deterministic experiment tools (slice, snapshot, lookups) | `tools.py` |
-| LiveProvider (DeepInfra) + ReplayProvider | `llm.py` |
-| system + user prompt builders | `prompts.py` |
-| LangGraph StateGraph, nodes, routing | `graph.py` |
-| `autosignalx agent run` / `status` | `cli.py` |
-
-Outputs: `reports/agent/ledger.jsonl`, `replay/agent_steps.jsonl`. Cockpit panels: **Agent Console**, **Ask the Memory**.
-
----
+| `state.py` | `AgentState` TypedDict (round, max_rounds, ledger, context, current_*, next_action, session_id) |
+| `prompts.py` | System prompts (`THEORIST_SYSTEM`, `SKEPTIC_SYSTEM`, `ADJUDICATOR_SYSTEM`, plus single-mode `PROPOSER_SYSTEM`, `CRITIC_SYSTEM`, `DECIDER_SYSTEM`) and message builders |
+| `llm.py` | `LiveProvider` (DeepInfra OpenAI-compatible via `langchain_openai.ChatOpenAI`); `ReplayProvider` (recorded JSONL); content-hash response cache; per-call telemetry recording; `get_provider(record_replay, role)` factory with `ROLE_TO_ENV` mapping |
+| `tools.py` | `slice_forecasts`, `test_significance`, `spawn_method`, `spawn_method_code`, `get_top_features`, `get_centrality_summary`, `context_snapshot` |
+| `graph.py` | `build_agent_graph` (single-LLM mode); `experiment_node` (handles all 3 experiment types + auto-promotion); `run(max_rounds, seed, record_replay, session_id)` |
+| `debate.py` | `build_debate_agent_graph` (4-node-per-round multi-role mode); `run_debate(...)` |
+| `specs.py` | Constrained DSL for `spawn_method`: `validate_spec`, `_build_forecast_fn`, `execute(spec, config_name)` |
+| `codegen.py` | Sandboxed Python for `spawn_method_code`: `validate_code` (AST walk), `compile_forecast_fn`, `execute_code_spec(spec)` |
+| `ledger.py` | `append`, `load`, `clear`, `summarize_for_prompt(entries, limit)` |
+| `findings.py` | `promote(...)` (idempotent on hypothesis+method+filters; bumps `replication_count` and appends to `replications` list); `_finding_id(content)` (content-hash); `make_session_id()` (sortable `YYYYMMDD-<hex>`) |
+| `lineage.py` | `hypothesis_id(content)` (content-hash); `build_lineage(ledger_entries, finding_records, parent_lookback, overlap_threshold)`; `lineage_dataframe(lineage)` |
+| `memory.py` | `consolidate(session_id, ledger, findings, provider)` (LLM-driven); `append_to_lessons`; `load_lessons(max_chars)` (tail-truncated read keeping section breaks) |
+| `trace_eval.py` | LLM-as-judge per-round scoring on 4 rubrics (clarity / novelty / falsifiability / evidence_citing) |
+| `self_critique.py` | LLM-as-judge re-evaluation of past findings; verdict ∈ {reinforced, unchanged, weakened, refuted} |
+| `telemetry.py` | `record_call(...)`, `estimate_cost_usd`, `model_prices(model_id)` (env-var override > defaults > fallback), `CallTimer` (wall-clock context manager) |
+| `sessions.py` | `list_sessions`, `session_summary(sid)`, `all_summaries`, `productivity_trend` (cumulative findings + cost) |
+| `cli.py` | `autosignalx agent run [--mode single\|debate]` / `score-traces` / `consolidate` / `self-critique` / `status` |
 
 ## Agent loop
 
-The agent is a **LangGraph** state machine over five nodes:
+### Single-LLM mode (`agent/graph.py:build_agent_graph`)
 
 ```
-START ─▶ propose ─▶ experiment ─▶ critique ─▶ decide ─┬─▶ propose (if continue)
-                                                       └─▶ END (if stop)
+START → propose → experiment → critique → decide → [propose | END]
 ```
 
-### State
+One LLM model handles all three reasoning steps. `decide` either continues (if not at `max_rounds`) or stops; conditional edge dispatches.
 
-`AgentState` (TypedDict in `agent/state.py`):
+### Debate mode (`agent/debate.py:build_debate_agent_graph`)
 
-```python
+```
+START → Theorist → Skeptic → experiment → Adjudicator → [Theorist | END]
+```
+
+Three different DeepInfra models play three roles (env-configurable):
+
+| Role | Default model | System prompt theme |
+|---|---|---|
+| Theorist | `moonshotai/Kimi-K2.6` | Propose specific, mechanistically motivated hypotheses |
+| Skeptic | `zai-org/GLM-5.1` | Identify confounders / alternative explanations *before* the experiment runs |
+| Adjudicator | `deepseek-ai/DeepSeek-V4-Pro` | Weigh proposal vs challenge against experiment result; verdict ends with `VERDICT: support \| refute \| inconclusive` |
+
+Each LLM-touching node writes its own ledger entry (`step ∈ {theorist, skeptic, adjudicator}`).
+
+### Experiment node (shared across modes)
+
+`experiment_node` in `agent/graph.py` branches on `state.current_hypothesis.experiment.type`:
+
+| Type | Action |
+|---|---|
+| `slice_forecasts` | Filter cached forecasts by `(method, asset, regime_id)`; compute metrics. |
+| `spawn_method` | Validate spec (`agent/specs.py`), build composed `ForecastFn` from primitives, run walk-forward (capped windows), persist to `reports/ablations/<name>.parquet`. |
+| `spawn_method_code` | AST-validate Python (`agent/codegen.py`), compile in restricted globals, run walk-forward (capped windows), persist code + metadata + forecasts. |
+
+**Auto-promotion** after every non-naive method experiment: call `test_significance(method, baseline="naive", asset, regime_id)`. If `promotable: True`, append to `reports/agent/findings.jsonl` with full evidence and provenance.
+
+## DSL spec for `spawn_method` (`agent/specs.py`)
+
+```json
 {
-    "round": int,                   # current round (0-indexed)
-    "max_rounds": int,              # hard cap
-    "ledger": list[dict],           # accumulating in-memory mirror of ledger.jsonl
-    "context": dict,                # tools.context_snapshot() at run start
-    "current_hypothesis": dict,     # last propose output
-    "current_critique": str,        # last critique output
-    "current_experiment": dict,     # last experiment result
-    "next_action": "continue" | "stop",
+  "name": "<alphanumeric_with_underscores_or_dashes>",
+  "base": "naive | arima | chronos2_univariate | chronos2_multivariate",
+  "covariate_subset": ["DX-Y.NYB"],            // optional; only chronos2_multivariate
+  "ensemble_naive_weight": 0.3,                // [0, 1]; 0 = pure base, 1 = pure naive
+  "max_windows": 8,                            // cap for fast iteration
+  "asset_subset": ["SPY", "EFA"]               // optional asset filter
 }
 ```
 
-### Per-node responsibility
+`validate_spec` rejects bad names, unknown bases, malformed covariate subsets, out-of-range ensemble weights, bad max_windows, with specific error messages — before any code runs.
 
-| Node | Reads | Calls | Writes |
-|---|---|---|---|
-| `propose` | `state.context`, `summarize_for_prompt(ledger)` | LLM (proposer model) | hypothesis JSON → ledger + state |
-| `experiment` | `state.current_hypothesis.experiment` | `tools.slice_forecasts(...)` (deterministic) | metrics JSON → ledger + state |
-| `critique` | hypothesis + experiment | LLM (critic model) | critique string → ledger + state |
-| `decide` | ledger summary | LLM (decider model, or hard-stop on `max_rounds`) | `{"action", "reason"}` → ledger + `state.next_action` |
+## Sandbox model (`agent/codegen.py`)
 
-### Tool surface (`agent/tools.py`)
+For `spawn_method_code`:
 
-What the experiment node can do:
+1. **AST validation** rejects:
+   - Imports of any module not in `ALLOWED_IMPORTS = {numpy, pandas, math}`.
+   - References to forbidden names: `exec`, `eval`, `compile`, `__import__`, `open`, `input`, `globals`, `locals`, `vars`, `getattr`, `setattr`, `delattr`, `hasattr`, `exit`, `quit`, `breakpoint`, `help`.
+   - Dunder attribute access (`x.__class__`, etc.).
+   - Code length > 8000 characters.
 
-- `slice_forecasts(method=None, asset=None, regime_id=None) → {n_total_rows, per_method: [{method, n, mae, mape, dir_acc, crps, skill_vs_naive}, ...]}`
-  Joins `forecast_origin → regime_id` using `reports/regimes/kmeans.parquet`, then filters and computes the standard metric set on the slice.
-- `get_top_features(regime_id, top_k=5) → list[{feature, importance, rank}]`
-  Reads from `reports/signals/signal_ranking.parquet`.
-- `get_centrality_summary() → dict[asset → {degree, eigenvector, betweenness}]`
-  Reads from `reports/graph/centrality.parquet`.
-- `context_snapshot() → dict` — bundles all of the above + `list_methods/assets/regimes` into a single dict that seeds the proposer prompt at run start.
+2. **Restricted globals** (`_safe_globals`): a curated `__builtins__` dict (range, len, abs, min/max/sum, sorted, ...) plus `np`, `pd`, `math` aliases. Custom `__import__` resolves only `ALLOWED_IMPORTS`.
 
-By design, **all experiments are descriptive** (slicing cached forecasts), not causal (no fit-on-the-fly). This is documented as a limitation in REPORT.md Iter 9. Adding a `fit_method_on_slice` tool that retrains a model under specific (regime, feature-subset) constraints is the natural next step.
+3. **Function-shape check**: the compiled module must define a callable named `forecast_fn`.
 
-### LLM provider (`agent/llm.py`)
+4. **Persistence**: generated source → `reports/agent/generated_methods/<name>.py`; metadata → `<name>.json`. Forecasts go to `reports/ablations/<name>.parquet` like any other method.
 
-Two implementations of the same `LLMProvider` Protocol:
+This is a **soft** boundary suitable for trusted (author-controlled) prompts. It is **not** a security boundary against adversarial Python; production hardening would require OS-level isolation (firejail / gVisor / WASM) or process separation.
 
-- **`LiveProvider`**: wraps `langchain_openai.ChatOpenAI` pointed at DeepInfra's OpenAI-compatible endpoint. Hashes the message list (SHA-256) and caches the response on disk under `reports/agent/llm_cache/`, so re-runs of the same prompt are free and deterministic. Optionally appends every response to `replay/agent_steps.jsonl` (when `--record-replay` is set on the CLI).
-- **`ReplayProvider`**: reads pre-recorded responses from `replay/agent_steps.jsonl`, keyed by `(round, step)`. If a key is missing, returns a deterministic plausible fallback (defined in `_fallback_response`) so the loop keeps running and produces a structured trace even on a sparse replay.
+## Cockpit reader pattern (`app/streamlit_app.py`)
 
-`get_provider(record_replay=False)` is the factory: returns `ReplayProvider` if `settings.use_replay` is true (= `AUTOSIGNALX_REPLAY=true` or no API key); otherwise `LiveProvider`.
-
-### Why this composition matters
-
-A reviewer cloning the repo without a DeepInfra key gets the same agent walkthrough as a reviewer with a key, because `replay/agent_steps.jsonl` is committed and contains the recorded live session. The Streamlit `Agent Console` panel reads `reports/agent/ledger.jsonl` either way; the `Ask the Memory` panel switches between LLM-answered (live) and keyword-search (replay) at render time based on `settings.use_replay`.
-
----
-
-## Cockpit (`app/streamlit_app.py`)
-
-A flat module that registers eight panel render functions in a `PANELS` dict and dispatches by sidebar selection. Every panel is a **read-only reader** over `reports/`:
+A flat module registering 15 panel render functions in a `PANELS` dict, dispatched by sidebar selection. Every panel is a read-only reader over `reports/`:
 
 | Panel | Reads |
 |---|---|
 | Overview | `__version__`, `settings` |
 | Data | `data/cache/*.parquet` (via `data.cache.cache_status` and `data.loader.load_*_wide`) |
-| Forecast Arena | `reports/ablations/*.parquet` (concat of all), optionally `reports/regimes/kmeans.parquet` for stratification |
+| Forecast Arena | `reports/ablations/*.parquet` (concat); optionally `reports/regimes/kmeans.parquet` for stratification |
 | Regime Explorer | `reports/regimes/{kmeans,hmm,embeddings}.parquet` |
 | Signal Discovery Lab | `reports/signals/*.parquet` (most recent by mtime) |
 | Cross-Asset Graph | `reports/graph/{edges,centrality}.parquet` |
-| Agent Console | `reports/agent/ledger.jsonl` |
-| Ask the Memory | `reports/agent/ledger.jsonl` + `agent.llm.get_provider()` (live) or keyword search (replay) |
+| Agent Console | `reports/agent/ledger.jsonl`, `reports/agent/trace_quality.jsonl` |
+| Auto-Play Replay | `reports/agent/ledger.jsonl` (with `st.session_state` for playback) |
+| Findings | `reports/agent/findings.jsonl` |
+| Lineage | `reports/agent/ledger.jsonl` + `findings.jsonl` (DAG inferred via `lineage.build_lineage`) |
+| Self-Critique | `reports/agent/self_critique.jsonl` |
+| Lessons & Memory | `reports/agent/lessons.md` |
+| Telemetry | `reports/agent/telemetry.jsonl` |
+| Sessions | All stores, aggregated by `session_id` via `agent/sessions.py` |
+| Ask the Memory | `reports/agent/ledger.jsonl` + LLM (live mode) or keyword search (replay mode) |
 
-Adding a panel: define `render_<name>() -> None`, append `"<Panel name>": render_<name>` to `PANELS`. Panels never compute heavy work — all expensive computation happens in the per-layer CLI commands and is persisted to `reports/`.
-
----
+No panel computes heavy work; expensive computation lives in CLI commands and is persisted to `reports/`.
 
 ## Adding a new layer
 
-The repository is structured to make this a templated change. To add a hypothetical L6:
+1. `src/autosignalx/<layer>/__init__.py` exposing the public API.
+2. Define output schema as a parquet (or JSONL) under `reports/<layer>/`.
+3. Per-concern modules (e.g., `model.py`, `infer.py`).
+4. `<layer>/cli.py` defining a `typer.Typer`; register in `src/autosignalx/cli.py` via `app.add_typer(<layer>_app, name="<layer>")`.
+5. Makefile target.
+6. Streamlit panel: render function appended to `PANELS` in `app/streamlit_app.py`.
+7. Tests in `tests/test_<layer>.py`.
+8. If the agent should consume the new artifact: add a tool in `agent/tools.py` that loads it; bundle it into `context_snapshot()`.
 
-1. **Create the package**: `src/autosignalx/<layer>/__init__.py` exposing the public API.
-2. **Define the output schema**: a parquet (or JSONL) under `reports/<layer>/` with documented columns.
-3. **Write the core**: per-concern modules (e.g., `model.py`, `infer.py`).
-4. **Write the CLI subcommand**: `<layer>/cli.py` defining a `typer.Typer` instance, registered in `src/autosignalx/cli.py` via `app.add_typer(<layer>_app, name="<layer>")`.
-5. **Add a Makefile target**: one line that calls the CLI subcommand.
-6. **Add a Streamlit panel**: a single render function appended to `PANELS` in `app/streamlit_app.py`.
-7. **Add tests**: `tests/test_<layer>.py` with unit tests against synthetic inputs.
-8. **Append a section to REPORT.md** with methodology + findings.
-9. **Update the agent's tool surface** (`agent/tools.py`) if the new layer's artifact should be readable by the agent — add a function that loads it and bundle it into `context_snapshot()`.
-10. **Branch + merge `--no-ff`**: develop on `iter-N-<theme>`, merge into the integration branch with `--no-ff` to preserve the boundary.
+## Scheduled execution
 
-Steps 1–8 are local to the layer; step 9 is the only cross-cutting hook. Step 10 keeps the version-control story coherent.
+`scripts/run_session.sh` (bash, cron-compatible) and `scripts/run_session.ps1` (PowerShell, Windows Task Scheduler) wrap a full session: `agent run --mode debate --record-replay` → `agent score-traces` → `agent consolidate`. Configurable via `AUTOSIGNALX_ROUNDS` and `AUTOSIGNALX_MODE` env vars.
 
----
+Cron example:
 
-## Known limitations referenced from the architecture
+```
+0 3 * * * cd /path/to/repo && bash scripts/run_session.sh >> reports/agent/cron.log 2>&1
+```
 
-- **All agent experiments are descriptive (slicing cached forecasts), not causal (re-fitting models per-hypothesis).** The agent's `slice_forecasts` tool computes metrics on cached data; adding a `fit_method_on_slice` tool that retrains under hypothesis-specific constraints is a natural extension that would let the agent run causal experiments inside the same LangGraph loop.
-- **The forecast contract assumes price-level targets (`adj_close`).** Returns-based targets and risk-adjusted metrics (Sharpe, Sortino) would extend the contract with optional columns.
-- **The signal layer fits on a *random* subsample per regime.** A walk-forward variant that fits per (regime, training-window) and ranks features per training window is a natural extension.
-- **Cross-asset graph is global, not per-regime.** Computing partial-correlation graphs *within* each regime would expose regime-conditional structural changes (and is straightforward — pass `returns[regime_mask]` instead of `returns`).
-
----
-
-For the *what we found* narrative, see [REPORT.md](../REPORT.md). For the *why* and the project framing, see [README.md](../README.md).
+Cross-session aggregation in `agent/sessions.py` (`list_sessions`, `session_summary(sid)`, `all_summaries`, `productivity_trend`) produces per-session and cumulative views in the Sessions cockpit panel.
