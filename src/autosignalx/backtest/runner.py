@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from autosignalx.backtest import engine, metrics, strategies
+from autosignalx.backtest import engine, metrics, signals, strategies
 from autosignalx.backtest.schemas import (
     DISCOVERY_END,
     BacktestConfig,
@@ -47,6 +47,28 @@ def _load_prices(
     return px
 
 
+def _build_context(cfg: BacktestConfig) -> dict:
+    """Best-effort load of forecast/regime/finding inputs.
+
+    Each load is wrapped: if the artifact is missing, the corresponding
+    context key is ``None`` and a strategy that needs it will raise a
+    clear error when invoked. Strategies that don't need it are
+    unaffected.
+    """
+    ctx: dict = {}
+    try:
+        ctx["forecast_signals"] = signals.load_forecast_signals()
+    except FileNotFoundError:
+        ctx["forecast_signals"] = None
+    try:
+        ctx["regimes"] = signals.load_regime_series()
+    except FileNotFoundError:
+        ctx["regimes"] = None
+    ctx["findings"] = signals.load_promoted_findings()
+    ctx["config"] = cfg
+    return ctx
+
+
 def _assert_no_leakage(start: pd.Timestamp) -> None:
     """The backtest window must start strictly after discovery ended."""
     if start <= pd.Timestamp(DISCOVERY_END):
@@ -70,6 +92,7 @@ def run_backtest(
     _assert_no_leakage(start)
 
     prices = _load_prices(universe, start, end)
+    context = _build_context(cfg)
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
     base = artifacts_root or (settings.reports_dir / "backtest" / "runs")
@@ -81,22 +104,23 @@ def run_backtest(
     summaries: list[StrategyResult] = []
     metrics_payload: dict[str, dict] = {}
 
-    for strat_name in cfg.strategies:
-        strat = strategies.build_strategy(strat_name)
-        weights = strat.weights(prices, context=None)
+    for spec in cfg.strategies:
+        strat = strategies.parse_strategy_spec(spec)
+        display_name = strat.name
+        weights = strat.weights(prices, context=context)
         weights = weights.reindex(prices.index).fillna(0.0)
         out = engine.run_engine(weights, prices, cost_bps=cfg.cost_bps)
 
         m = metrics.compute_all(
             out["equity"], out["returns"], out["turnover"], out["cost"]
         )
-        metrics_payload[strat_name] = metrics.sanitize_metrics(m)
-        summaries.append(StrategyResult(name=strat_name, **m))
+        metrics_payload[display_name] = metrics.sanitize_metrics(m)
+        summaries.append(StrategyResult(name=display_name, **m))
 
         per_day = pd.DataFrame(
             {
                 "timestamp": out["equity"].index,
-                "strategy": strat_name,
+                "strategy": display_name,
                 "return": out["returns"].values,
                 "equity": out["equity"].values,
                 "turnover": out["turnover"].values,
@@ -106,7 +130,7 @@ def run_backtest(
         portfolio_rows.append(per_day)
 
         trades = engine.assemble_trades(weights, cost_bps=cfg.cost_bps)
-        trades.insert(1, "strategy", strat_name)
+        trades.insert(1, "strategy", display_name)
         trade_rows.append(trades)
 
     portfolio_df = pd.concat(portfolio_rows, ignore_index=True)

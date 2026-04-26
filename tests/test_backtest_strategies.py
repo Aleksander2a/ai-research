@@ -8,9 +8,18 @@ import pytest
 from autosignalx.backtest import strategies
 
 
-def _prices(assets: tuple[str, ...]) -> pd.DataFrame:
-    idx = pd.bdate_range("2021-01-04", periods=5)
+def _prices(assets: tuple[str, ...], n: int = 30) -> pd.DataFrame:
+    idx = pd.bdate_range("2021-01-04", periods=n)
     return pd.DataFrame(100.0, index=idx, columns=list(assets))
+
+
+def _signals_at(origins: list[str], values: dict[str, list[float]]) -> pd.DataFrame:
+    rows = []
+    for i, origin in enumerate(origins):
+        for asset, vals in values.items():
+            rows.append({"forecast_origin": pd.Timestamp(origin),
+                         "asset": asset, "predicted_return": vals[i]})
+    return pd.DataFrame(rows)
 
 
 def test_buy_and_hold_spy_full_weight_in_spy():
@@ -43,6 +52,70 @@ def test_unknown_strategy_raises():
         strategies.build_strategy("DoesNotExist")
 
 
-def test_registry_contains_phase1_1_strategies():
-    assert "BuyAndHoldSPY" in strategies.STRATEGY_REGISTRY
-    assert "EqualWeightUniverse" in strategies.STRATEGY_REGISTRY
+def test_registry_contains_all_strategies():
+    for name in ("BuyAndHoldSPY", "EqualWeightUniverse", "TopKLong", "LongShortKK"):
+        assert name in strategies.STRATEGY_REGISTRY
+
+
+def test_parse_spec_handles_kwargs():
+    s = strategies.parse_strategy_spec("TopKLong:k=5")
+    assert isinstance(s, strategies.TopKLong)
+    assert s.k == 5
+    assert s.name == "TopKLong(k=5)"
+
+
+def test_parse_spec_default_kwargs():
+    s = strategies.parse_strategy_spec("LongShortKK")
+    assert s.k == 2  # default
+
+
+def test_top_k_long_picks_top_k():
+    px = _prices(("A", "B", "C", "D"), n=15)
+    sigs = _signals_at(
+        ["2021-01-04", "2021-01-15"],
+        {"A": [0.10, -0.05], "B": [0.05, 0.20], "C": [-0.02, 0.10], "D": [-0.10, -0.20]},
+    )
+    s = strategies.parse_strategy_spec("TopKLong:k=2")
+    w = s.weights(px, context={"forecast_signals": sigs})
+    # On 2021-01-04: top 2 are A (0.10) and B (0.05) -> 0.5 each
+    first = w.iloc[0]
+    assert first["A"] == pytest.approx(0.5)
+    assert first["B"] == pytest.approx(0.5)
+    assert first["C"] == 0.0
+    assert first["D"] == 0.0
+    # After 2021-01-15: top 2 are B (0.20) and C (0.10)
+    last = w.iloc[-1]
+    assert last["B"] == pytest.approx(0.5)
+    assert last["C"] == pytest.approx(0.5)
+    assert last["A"] == 0.0
+    assert last["D"] == 0.0
+
+
+def test_top_k_long_holds_between_origins():
+    px = _prices(("A", "B"), n=10)
+    sigs = _signals_at(["2021-01-04"], {"A": [0.1], "B": [-0.1]})
+    s = strategies.parse_strategy_spec("TopKLong:k=1")
+    w = s.weights(px, context={"forecast_signals": sigs})
+    assert (w["A"] == 1.0).all()
+    assert (w["B"] == 0.0).all()
+
+
+def test_long_short_is_dollar_neutral():
+    px = _prices(("A", "B", "C", "D"), n=10)
+    sigs = _signals_at(
+        ["2021-01-04"], {"A": [0.20], "B": [0.10], "C": [-0.10], "D": [-0.20]}
+    )
+    s = strategies.parse_strategy_spec("LongShortKK:k=2")
+    w = s.weights(px, context={"forecast_signals": sigs})
+    row = w.iloc[0]
+    assert row.sum() == pytest.approx(0.0)  # dollar neutral
+    assert row.abs().sum() == pytest.approx(1.0)  # gross 100%
+    assert row["A"] > 0 and row["B"] > 0
+    assert row["C"] < 0 and row["D"] < 0
+
+
+def test_signal_strategy_requires_context():
+    px = _prices(("A", "B"))
+    s = strategies.parse_strategy_spec("TopKLong:k=1")
+    with pytest.raises(ValueError, match="forecast_signals"):
+        s.weights(px, context=None)
