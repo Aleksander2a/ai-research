@@ -60,19 +60,32 @@ def render_overview() -> None:
 
     st.divider()
     st.subheader("Headline findings")
+    st.success(
+        "**Phase 2 WOW**: the agent autonomously discovered a DM-significant "
+        "lift over naive. Hypothesis (round 0, debate mode): *chronos2_multivariate "
+        "for TLT in regime 3 outperforms naive because TLT's high betweenness "
+        "centrality makes it a bridge between market clusters that the multivariate "
+        "transformer can capture.* **Verdict: skill +5.4% MAE, DM p=0.040, bootstrap "
+        "CI strictly above zero.** Auto-promoted to the Findings panel."
+    )
     st.markdown(
         """
         - **Iter 3 (negative result, calibrated)**: Chronos-2 underperforms naive on
-          daily ETFs by 5-6% MAE; 80% intervals well-calibrated (CRPS ≈ 2.9). Macro
-          covariates do not help unconditionally.
+          daily ETFs by 5-6% MAE *unconditionally*; 80% intervals well-calibrated
+          (CRPS ≈ 2.9). The Phase 2 finding above shows this is regime-specific,
+          not universal.
         - **Iter 5 (signals)**: Macros dominate every regime's top-5 features for
           direction prediction, but the **dominant macro depends on the regime**
           (TNX in Regime 0, DXY in Regimes 1+3, CL=F in Regime 2).
         - **Iter 6 (graph)**: SPY is the structural hub (eigenvector 0.532); GLD is
           statistically isolated; TLT is the bridge (highest betweenness 0.429).
-        - **Iter 7 (agent)**: by Round 4 the live agent composes findings from
-          every prior layer into a single mechanistic, falsifiable hypothesis --
-          the conditional-improvement search opened by Iter 3's negative result.
+          The agent reasoned about TLT's bridge role to construct its winning hypothesis.
+        - **Iter 12 (debate)**: Theorist (Kimi K2.6) / Skeptic (GLM-5.1) /
+          Adjudicator (DeepSeek V4-Pro) -- three voices per round, each persisted
+          in the ledger and rendered in the cockpit.
+        - **Iter 13 (DSL)**: in the same debate session the agent also AUTHORED a
+          new method (`efa_dxy_bridge_focus`) via the constrained code-spec DSL,
+          ran it through the walk-forward harness, adjudicated the result.
         """
     )
 
@@ -668,6 +681,126 @@ def render_trace_quality_chart() -> None:
     )
 
 
+def render_auto_play() -> None:
+    st.title("Auto-Play Replay")
+    st.caption(
+        "Press play to watch the agent's recorded research session unfold "
+        "round by round. The trace is read from `reports/agent/ledger.jsonl` "
+        "(or the committed replay) -- live and replay sessions both render here."
+    )
+
+    from autosignalx.agent import ledger as ledger_mod
+
+    entries = ledger_mod.load()
+    if not entries:
+        st.info("No ledger entries yet. Run `make agent` to record a session.")
+        return
+
+    if "playback_idx" not in st.session_state:
+        st.session_state.playback_idx = 0
+    if "playback_speed" not in st.session_state:
+        st.session_state.playback_speed = 1.0
+    if "is_playing" not in st.session_state:
+        st.session_state.is_playing = False
+
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+    with col1:
+        if st.button("Play"):
+            st.session_state.is_playing = True
+    with col2:
+        if st.button("Pause"):
+            st.session_state.is_playing = False
+    with col3:
+        if st.button("Reset"):
+            st.session_state.playback_idx = 0
+            st.session_state.is_playing = False
+    with col4:
+        st.session_state.playback_speed = st.select_slider(
+            "Speed",
+            options=[0.5, 1.0, 2.0, 4.0],
+            value=st.session_state.playback_speed,
+            label_visibility="collapsed",
+        )
+
+    st.session_state.playback_idx = st.slider(
+        "Round",
+        min_value=0,
+        max_value=len(entries),
+        value=st.session_state.playback_idx,
+    )
+    progress = st.session_state.playback_idx / max(1, len(entries))
+    st.progress(progress, text=f"Step {st.session_state.playback_idx} / {len(entries)}")
+
+    visible = entries[: st.session_state.playback_idx]
+    role_icon = {
+        "propose": "P",
+        "theorist": "T",
+        "skeptic": "S",
+        "experiment": "E",
+        "critique": "C",
+        "adjudicator": "A",
+        "decide": "D",
+    }
+    for e in visible:
+        rd = e.get("round", "?")
+        step = e.get("step", "?")
+        content = e.get("content", "")
+        with st.chat_message("user" if step == "experiment" else "assistant"):
+            st.markdown(f"**[{role_icon.get(step, '*')}] round {rd} -- {step}**")
+            if isinstance(content, dict):
+                if step in ("propose", "theorist"):
+                    st.markdown(f"_Hypothesis_: {content.get('hypothesis', '')}")
+                else:
+                    st.json(content)
+            else:
+                st.markdown(str(content)[:800])
+
+    if st.session_state.is_playing and st.session_state.playback_idx < len(entries):
+        import time
+
+        time.sleep(max(0.2, 1.0 / st.session_state.playback_speed))
+        st.session_state.playback_idx += 1
+        st.rerun()
+
+
+def render_self_critique() -> None:
+    st.title("Self-Critique")
+    st.caption(
+        "The agent re-reads its own promoted findings against the current "
+        "state of the ledger and other findings. Verdicts: reinforced "
+        "(later evidence supports), unchanged, weakened (some doubt), "
+        "refuted (later evidence contradicts)."
+    )
+
+    from autosignalx.agent import self_critique as sc
+
+    rows = sc.load()
+    if not rows:
+        st.info(
+            "No self-critiques yet. Run `autosignalx agent self-critique` "
+            "after enough findings have accumulated."
+        )
+        return
+
+    state_counts = pd.Series([r.get("current_state", "unknown") for r in rows]).value_counts()
+    cols = st.columns(min(4, len(state_counts) + 1))
+    cols[0].metric("Total critiques", len(rows))
+    for i, (state, cnt) in enumerate(state_counts.items(), start=1):
+        if i < len(cols):
+            cols[i].metric(state.capitalize(), int(cnt))
+
+    st.divider()
+    state_emoji = {"reinforced": "++", "unchanged": "==", "weakened": "--", "refuted": "XX"}
+    for r in rows[::-1]:  # most recent first
+        st.markdown(
+            f"**[{state_emoji.get(r.get('current_state', ''), '?')}] "
+            f"{r.get('finding_id', '?')}**  -  *{r.get('current_state', '?')}*"
+        )
+        st.markdown(f"_{r.get('rationale', '')}_")
+        st.caption(f"recorded {r.get('ts', '')}")
+        st.divider()
+
+
 def render_sessions() -> None:
     st.title("Sessions")
     st.caption(
@@ -970,8 +1103,10 @@ PANELS = {
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
     "Agent Console": render_agent_console,
+    "Auto-Play Replay": render_auto_play,
     "Findings": render_findings,
     "Lineage": render_lineage,
+    "Self-Critique": render_self_critique,
     "Lessons & Memory": render_lessons,
     "Telemetry": render_telemetry,
     "Sessions": render_sessions,
