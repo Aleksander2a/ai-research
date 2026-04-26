@@ -221,6 +221,7 @@ __marimo__/
 data/*
 !data/.gitkeep
 reports/runs/
+reports/backtest/runs/
 
 # uv local cache (Windows cross-drive workaround when set as UV_CACHE_DIR)
 .uv-cache/

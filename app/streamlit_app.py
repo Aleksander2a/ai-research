@@ -79,6 +79,7 @@ def render_overview() -> None:
         ("Regime Explorer", "KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime. Reads `reports/regimes/*.parquet`."),
         ("Signal Discovery Lab", "Per-regime feature importance bar chart; ranking table; cross-regime importance heatmap. Reads `reports/signals/signal_ranking.parquet`."),
         ("Cross-Asset Graph", "Centrality table; partial-correlation matrix; top Granger edges. Reads `reports/graph/{edges,centrality}.parquet`."),
+        ("Backtest Arena", "Simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdowns, Sharpe/Sortino/Calmar; strict no-look-ahead. Reads `reports/backtest/runs/<run_id>/`."),
         ("Agent Console", "Chat-style ledger timeline; per-round trace-quality chart at the bottom. Reads `reports/agent/ledger.jsonl`."),
         ("Auto-Play Replay", "Playback controls (play / pause / reset, 0.5x-4x speed) over the ledger."),
         ("Findings", "Promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; full statistical evidence per card. Reads `reports/agent/findings.jsonl`."),
@@ -1224,6 +1225,154 @@ def render_lineage() -> None:
         st.error(f"DAG rendering failed: {e}")
 
 
+def render_backtest_arena() -> None:
+    st.title("Backtest Arena")
+    st.write(
+        "Simulated trading on the test window using strategies driven by the "
+        "system's discoveries. Strict no-look-ahead: backtest start is "
+        "after the discovery window end (2020-12-31)."
+    )
+    _panel_doc(
+        inputs="Reads `data/cache/ohlcv.parquet` for adjusted close prices and "
+        "`reports/backtest/runs/<run_id>/{portfolio_daily,trades,metrics,meta}` "
+        "for completed runs. Strategy `BuyAndHoldSPY` and `EqualWeightUniverse` "
+        "(passive) need only prices; signal-driven strategies (Phase 1.2+) "
+        "additionally consume `reports/ablations/*.parquet` and "
+        "`reports/agent/findings.jsonl`.",
+        operations="Vectorized portfolio engine: weights set at close(t) earn "
+        "the close(t)->close(t+1) return (one-bar shift prevents look-ahead). "
+        "Per-bar turnover charges a configurable bps cost. Metrics: CAGR, "
+        "annualised vol, Sharpe, Sortino, max drawdown, Calmar, hit rate, "
+        "average turnover, total cost drag.",
+        goal="Translate the abstract research output (forecasts, regimes, "
+        "agent-promoted findings) into concrete simulated trading performance "
+        "to test whether the discoveries are economically actionable, not just "
+        "statistically significant.",
+        interpretation="A strategy beats the SPY benchmark if its Sharpe is "
+        "higher *net of costs*. Negative Sharpe means the strategy lost money "
+        "on a risk-adjusted basis. Drawdown depth and Calmar ratio matter as "
+        "much as headline returns. Phase 1.1 ships the two passive "
+        "benchmarks; signal-driven strategies arrive in subsequent "
+        "sub-iterations.",
+    )
+
+    runs_dir = settings.reports_dir / "backtest" / "runs"
+    if not runs_dir.exists():
+        st.info("No backtest runs yet. Run `autosignalx backtest run`.")
+        return
+    runs = sorted([p for p in runs_dir.iterdir() if p.is_dir()], reverse=True)
+    if not runs:
+        st.info("No backtest runs yet. Run `autosignalx backtest run`.")
+        return
+
+    selected = st.selectbox("Run", [r.name for r in runs])
+    run_dir = runs_dir / selected
+
+    metrics_path = run_dir / "metrics.json"
+    portfolio_path = run_dir / "portfolio_daily.parquet"
+    meta_path = run_dir / "meta.json"
+
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text())
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Strategies", len(meta.get("config", {}).get("strategies", [])))
+        col2.metric("Period (bars)", meta.get("n_periods", 0))
+        col3.metric("Cost (bps)", meta.get("config", {}).get("cost_bps", 0.0))
+        with st.expander("Run config"):
+            st.json(meta)
+
+    if not metrics_path.exists() or not portfolio_path.exists():
+        st.warning("Run is missing artifacts.")
+        return
+
+    metrics = json.loads(metrics_path.read_text())
+    sig_payload = metrics.pop("__significance__", {})
+    rows = []
+    for name, m in metrics.items():
+        # Strip nested per_regime block before flattening for the table.
+        flat = {k: v for k, v in m.items() if k != "per_regime"}
+        rows.append({"strategy": name, **flat})
+    metrics_df = pd.DataFrame(rows)
+    pretty_cols = {
+        "strategy": "Strategy",
+        "total_return": "Total Return",
+        "cagr": "CAGR",
+        "annual_vol": "Annual Vol",
+        "sharpe": "Sharpe",
+        "sortino": "Sortino",
+        "max_drawdown": "Max DD",
+        "calmar": "Calmar",
+        "hit_rate": "Hit Rate",
+        "avg_turnover": "Turnover",
+        "cost_drag": "Cost Drag",
+    }
+    metrics_view = metrics_df.rename(columns=pretty_cols)
+    st.subheader("Per-strategy metrics")
+    st.dataframe(metrics_view, hide_index=True, use_container_width=True)
+
+    portfolio = pd.read_parquet(portfolio_path)
+    portfolio["timestamp"] = pd.to_datetime(portfolio["timestamp"])
+
+    st.subheader("Equity curves")
+    pivot = portfolio.pivot(index="timestamp", columns="strategy", values="equity")
+    st.line_chart(pivot)
+
+    st.subheader("Drawdown")
+    eq = pivot
+    peak = eq.cummax()
+    drawdown = eq / peak - 1.0
+    st.area_chart(drawdown)
+
+    st.caption(
+        "Equity normalised to 1.0 at run start; drawdown is the fraction "
+        "below the running peak. All series include realised costs."
+    )
+
+    if sig_payload:
+        st.subheader("Sharpe-difference significance")
+        bench_strat = next(iter(sig_payload.values())).get("benchmark", "benchmark")
+        st.caption(
+            f"Paired moving-block bootstrap of Sharpe(strategy) - Sharpe({bench_strat}). "
+            f"'Significant' = 95% CI excludes 0."
+        )
+        sig_rows = []
+        for name, s in sig_payload.items():
+            sig_rows.append({
+                "Strategy": name,
+                "Sharpe diff": s.get("sharpe_diff", 0.0),
+                "CI low": s.get("ci_low", 0.0),
+                "CI high": s.get("ci_high", 0.0),
+                "p-value": s.get("p_value", 1.0),
+                "Significant": "yes" if s.get("significant") else "no",
+            })
+        st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
+
+    # Per-regime breakdown
+    per_regime_blocks = {
+        name: m["per_regime"] for name, m in metrics.items() if "per_regime" in m
+    }
+    if per_regime_blocks:
+        st.subheader("Per-regime metrics")
+        st.caption(
+            "Sharpe / CAGR conditional on regime ID; the equity curve "
+            "is recompounded over each regime's bars in isolation."
+        )
+        chosen = st.selectbox("Strategy", list(per_regime_blocks.keys()))
+        block = per_regime_blocks[chosen]
+        regime_rows = []
+        for r, m in block.items():
+            regime_rows.append({
+                "Regime": r,
+                "N bars": m.get("n_periods", 0),
+                "CAGR": m.get("cagr", 0.0),
+                "Vol": m.get("annual_vol", 0.0),
+                "Sharpe": m.get("sharpe", 0.0),
+                "Max DD": m.get("max_drawdown", 0.0),
+                "Hit Rate": m.get("hit_rate", 0.0),
+            })
+        st.dataframe(pd.DataFrame(regime_rows), hide_index=True, use_container_width=True)
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -1231,6 +1380,7 @@ PANELS = {
     "Regime Explorer": render_regime_explorer,
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
+    "Backtest Arena": render_backtest_arena,
     "Agent Console": render_agent_console,
     "Auto-Play Replay": render_auto_play,
     "Findings": render_findings,

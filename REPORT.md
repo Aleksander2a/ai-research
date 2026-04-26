@@ -219,6 +219,74 @@ In the same session, the agent also authored a new method via the constrained DS
 
 The Adjudicator-role model re-read `f_9395cd1bd1be` against the rest of the ledger and returned `current_state: unchanged` with rationale: "no subsequent evidence directly addresses TLT in regime 3 or the Granger bridge mechanism." Honest: a single session does not replicate a finding; replication is the responsibility of multi-session scheduled runs.
 
+## Backtested simulation
+
+Phase 1 (post-submission) translates the discovery layers into a concrete trading simulation to test whether the discovered structure is *economically actionable*, not only statistically significant.
+
+### Methodology
+
+- **Engine.** Custom vectorized portfolio engine in `src/autosignalx/backtest/engine.py` (~80 LOC). Trade-timing invariant: weights set at `close(t)` earn the `close(t) → close(t+1)` return (one-bar shift, pinned by `tests/test_backtest_engine.py::test_trade_timing_no_lookahead`). Costs: one-way bps charge on `|Δw|` per asset per rebalance.
+- **Window.** `2021-01-04` to `2025-12-30` (1255 daily bars, full test period). Discovery (Chronos-2 fits, regime model, agent-promoted findings) used data through `2020-12-31`. The runner refuses to start a backtest at any earlier date — see `tests/test_no_backtest_leakage.py`.
+- **Universe.** The same 8 ETFs as discovery. Survivorship bias is acknowledged; the universe is fixed at the start of the run.
+- **Rebalance cadence.** Every forecast origin (~21 trading days, 87 origins). At each origin, the strategy reads the predicted return for the holding period (horizon ≈ 20) and sets weights; positions hold until the next origin.
+- **Costs.** 5 bps one-way (10 bps round-trip on a full position change). Stress-tested at 0 bps — qualitative ranking unchanged.
+- **Significance.** Paired moving-block bootstrap (block size 5, 2 000 iterations) of `Sharpe(strategy) − Sharpe(benchmark)` with `BuyAndHoldSPY` as benchmark. Pairing preserves the cross-strategy correlation structure; an independent resample would understate the CI when both legs share market exposure. Implementation in `src/autosignalx/backtest/significance.py`.
+
+### Strategies
+
+| Strategy | Inputs consumed | Description |
+|---|---|---|
+| `BuyAndHoldSPY` | prices | 100% SPY, no rebalancing. Passive equity benchmark. |
+| `EqualWeightUniverse` | prices | Daily-rebalanced equal weights across the 8 ETFs. |
+| `TopKLong(k=3)` | prices, Chronos-2 multivariate forecasts | Each origin, hold equal weights in the top-3 assets by predicted return; cash otherwise. |
+| `LongShortKK(k=2)` | prices, Chronos-2 multivariate forecasts | Long top-2 / short bottom-2 by predicted return; gross 100%, net 0% (dollar-neutral). |
+| `RegimeGated(k=3)` | prices, forecasts, regime labels, findings | `TopKLong(k=3)` but only when the current regime has at least one promoted finding; cash otherwise. |
+| `FindingDriven` | prices, forecasts, regime labels, findings | Trades only the (asset, regime) pairs in `findings.jsonl`, weighted by `skill_vs_baseline`, renormalised so gross ≤ 1.0. With the current single promoted finding, this means "long TLT only when regime == 3 and Chronos-2 predicts a positive return". |
+
+### Results (5 bps cost; 2021-01-04 → 2025-12-30; 1 255 daily bars)
+
+| Strategy              |    CAGR |   Vol  | Sharpe | Max DD  | Calmar | Hit Rate | Avg Turnover |
+|-----------------------|--------:|-------:|-------:|--------:|-------:|---------:|-------------:|
+| BuyAndHoldSPY         | 14.91 % | 17.10 %| +0.90  | −24.50 %| +0.61  | 54.7 %   | 0.0008       |
+| EqualWeightUniverse   |  8.30 % | 12.63 %| +0.69  | −25.30 %| +0.33  | 53.9 %   | 0.0008       |
+| TopKLong(k=3)         |  6.95 % | 15.34 %| +0.51  | −19.07 %| +0.36  | 52.6 %   | 0.0694       |
+| LongShortKK(k=2)      | −1.80 % |  8.43 %| −0.17  | −23.31 %| −0.08  | 49.0 %   | 0.0833       |
+| RegimeGated(k=3)      | −2.21 % |  9.62 %| −0.18  | −18.80 %| −0.12  | 15.8 %   | 0.0245       |
+| FindingDriven         | −2.10 % |  6.41 %| −0.30  | −19.31 %| −0.11  |  6.3 %   | 0.0080       |
+
+### Significance vs `BuyAndHoldSPY`
+
+Paired block-bootstrap, n = 2 000, B = 5; "Significant" = 95 % CI excludes 0.
+
+| Strategy             | Sharpe diff | 95 % CI            | p-value | Significant |
+|----------------------|------------:|--------------------|--------:|:-----------:|
+| EqualWeightUniverse  | −0.20       | [−0.57, +0.16]     |  0.260  |     no      |
+| TopKLong(k=3)        | −0.38       | [−0.84, +0.06]     |  0.082  |     no      |
+| LongShortKK(k=2)     | −1.07       | [−2.28, −0.08]     |  0.035  |   **yes**   |
+| RegimeGated(k=3)     | −1.08       | [−1.86, −0.33]     |  0.007  |   **yes**   |
+| FindingDriven        | −1.20       | [−2.28, −0.18]     |  0.024  |   **yes**   |
+
+### Honest interpretation
+
+- **No signal-driven strategy beats the passive SPY benchmark on this universe and window.** Three of five (`LongShortKK`, `RegimeGated`, `FindingDriven`) are *significantly worse*; the remaining two (`EqualWeightUniverse`, `TopKLong`) are statistically indistinguishable from SPY.
+- **The promoted finding does not translate to actionable alpha.** Finding `f_9395cd1bd1be` validated `chronos2_multivariate` over `naive` for TLT in regime 3 with `p = 0.04`, `skill = +5.4 %` MAE-vs-naive, and a bootstrap CI of `[+0.5 %, +19.7 %]`. The `FindingDriven` strategy that trades exactly that slice loses 2.1 %/yr at -0.30 Sharpe. Three plausible explanations:
+  1. **Statistical-vs-economic gap.** A 5.4 % MAE improvement on price-level forecasts at a 21-day horizon is small relative to typical asset volatility; the residual error still dominates trading P&L net of costs.
+  2. **Regime distribution shift.** The validation slice (407 bars) and the test-window slice differ in regime-prevalence and macro context; the alpha was real on the validation set but not robust.
+  3. **Multiple-comparison risk on the discovery side** — the agent explored multiple hypotheses; the survivor passing `p < 0.05` may not survive a Bonferroni-corrected gate.
+- **Drawdowns are *not* reduced.** Even when signal strategies hold cash most of the time (`FindingDriven` is invested only 6.3 % of bars), max drawdown remains ~19 %; cash drag is real.
+- **Turnover is the largest cost component for cross-sectional strategies.** `LongShortKK` averages 8.3 % daily turnover; at 5 bps that's a 1 %/yr cost drag in addition to the negative gross signal.
+
+### What this validates about the system
+
+The backtest does not *invalidate* the research instrument; it validates the **discipline**. The promotion gate flagged `f_9395cd1bd1be` as significant on the validation slice, the self-critique pass flagged the absence of replication, and the backtest now provides the third layer of scrutiny — economic-significance evaluation. A research instrument that consistently produces *honestly negative* out-of-sample backtests on borderline-significant findings is exactly what a quant research workflow should look like. A pipeline that turned every `p = 0.04` finding into a profitable strategy would be the suspicious one.
+
+### What Phase 1 deliberately did **not** do
+
+- No Kelly / vol-targeting; equal-weight only.
+- No hyperparameter search over `k`, cost assumptions, or holding period (would reintroduce backtest overfitting).
+- No live/paper trading wiring.
+- Slippage is a flat bps proxy; no liquidity-aware modelling.
+
 ## Limitations
 
 - **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.
@@ -238,5 +306,6 @@ The Adjudicator-role model re-read `f_9395cd1bd1be` against the rest of the ledg
 - **Walk-forward signal ranking** (per-(regime, training-window) instead of random subsample within regime).
 - **Wider experiment-tool surface** (per-spec hyperparameter search; explicit cross-validation in the experiment node).
 - **Returns-target forecasting** (extend the forecast contract with optional `target_type` field).
-- **Live evaluation harness** (latency-aware backtester with execution simulation).
+- **Live-execution-aware backtester.** The Phase 1 backtester applies a flat bps cost; a richer implementation would model latency, slippage by liquidity, and partial fills.
+- **Backtest extensions.** Multi-horizon strategies (1d / 5d / 21d) using the full Chronos-2 horizon panel, rather than only the holding-period bar; vol-targeting and Kelly sizing on top of the existing strategies; expanded universe via the Phase 2 custom-input layer.
 - **Stronger sandbox** for `spawn_method_code` (process isolation or WASM runtime).

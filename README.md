@@ -88,15 +88,16 @@ The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the f
 4. **Regime Explorer** — KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime.
 5. **Signal Discovery Lab** — per-regime feature ranking; cross-regime importance heatmap.
 6. **Cross-Asset Graph** — partial-correlation matrix; Granger edge table; centrality table.
-7. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
-8. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
-9. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
-10. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
-11. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
-12. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
-13. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
-14. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
-15. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
+7. **Backtest Arena** — simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference vs benchmark, per-regime metric breakdown. Strict no-look-ahead (backtest start > discovery end). Reads `reports/backtest/runs/<run_id>/`.
+8. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
+9. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
+10. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
+11. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
+12. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+13. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
+14. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
+15. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
+16. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
 
 ## CLI and Make targets
 
@@ -125,6 +126,9 @@ autosignalx agent score-traces      LLM-as-judge per-round quality scores
 autosignalx agent consolidate       Compress session into lessons.md
 autosignalx agent self-critique     Re-evaluate every promoted finding
 autosignalx agent status
+
+autosignalx backtest run [--strategies "..."] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--cost-bps N]
+autosignalx backtest status
 ```
 
 Make targets wrap each command (`make data`, `make baseline`, `make forecast`, `make regime`, `make signal`, `make graph`, `make agent`, `make scheduled-session`), plus `make sync`, `make test`, `make lint`, `make demo`, `make clean`.
