@@ -135,6 +135,41 @@ def show_cmd(name: str = typer.Argument(..., help="Study name.")) -> None:
     console.print(f"  reports:       {s.reports_root}")
 
 
+@study_app.command("validate")
+def validate_cmd(
+    name: str = typer.Argument(..., help="Study name."),
+    check_tickers: bool = typer.Option(
+        False, "--check-tickers",
+        help="Also probe yfinance availability for each ticker (network).",
+    ),
+) -> None:
+    """Run pre-flight checks on a study config (date ordering, window count,
+    universe size, optional ticker availability)."""
+    from autosignalx.study import validation
+
+    try:
+        s = Study.load(name)
+    except StudyNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1) from None
+    report = validation.validate(s, check_tickers=check_tickers)
+
+    for msg in report.info:
+        console.print(f"  [dim]info:[/dim]  {msg}")
+    for msg in report.warnings:
+        console.print(f"  [yellow]warn:[/yellow]  {msg}")
+    for msg in report.errors:
+        console.print(f"  [red]error:[/red] {msg}")
+    if report.ok:
+        console.print(f"[green]Validation OK[/green] for study [cyan]{name}[/cyan].")
+    else:
+        console.print(
+            f"[red]Validation failed[/red] for study [cyan]{name}[/cyan] "
+            f"({len(report.errors)} error(s))."
+        )
+        raise typer.Exit(code=1)
+
+
 @study_app.command("delete")
 def delete_cmd(
     name: str = typer.Argument(..., help="Study name."),
