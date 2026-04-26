@@ -17,14 +17,18 @@ import pandas as pd
 from autosignalx.config import settings
 
 
-def _ablations_path(filename: str = "chronos2.parquet") -> Path:
-    return settings.reports_dir / "ablations" / filename
+def _ablations_path(
+    filename: str = "chronos2.parquet", reports_root: Path | None = None
+) -> Path:
+    base = reports_root if reports_root is not None else settings.reports_dir
+    return base / "ablations" / filename
 
 
 def load_forecast_signals(
     method: str = "chronos2_multivariate",
     holding_horizon: int = 20,
     filename: str = "chronos2.parquet",
+    reports_root: Path | None = None,
 ) -> pd.DataFrame:
     """Per-origin predicted-return panel.
 
@@ -40,7 +44,7 @@ def load_forecast_signals(
         DataFrame with columns ``forecast_origin``, ``asset``,
         ``predicted_return`` (= prediction / origin_value - 1).
     """
-    path = _ablations_path(filename)
+    path = _ablations_path(filename, reports_root=reports_root)
     if not path.exists():
         raise FileNotFoundError(
             f"forecast ablations not found at {path}; "
@@ -65,15 +69,16 @@ def load_forecast_signals(
 def load_regime_series(
     method: str = "kmeans_contrastive",
     filename: str = "kmeans.parquet",
+    reports_root: Path | None = None,
 ) -> pd.Series:
     """Daily regime ID series indexed by timestamp.
 
-    Returns the test-window slice would-be filter; callers reindex as
-    needed. Regime labels for the test window are predicted by a model
-    fit on data through the val cutoff, so reading these labels does
-    not introduce look-ahead.
+    Regime labels for the test window are predicted by a model fit on
+    data through the val cutoff, so reading these labels does not
+    introduce look-ahead.
     """
-    path = settings.reports_dir / "regimes" / filename
+    base = reports_root if reports_root is not None else settings.reports_dir
+    path = base / "regimes" / filename
     if not path.exists():
         raise FileNotFoundError(
             f"regime artifacts not found at {path}; "
@@ -85,11 +90,12 @@ def load_regime_series(
     return df.set_index("timestamp")["regime_id"].sort_index()
 
 
-def load_promoted_findings() -> list[dict]:
+def load_promoted_findings(reports_root: Path | None = None) -> list[dict]:
     """Return all rows from ``reports/agent/findings.jsonl`` as dicts."""
     import json
 
-    path = settings.reports_dir / "agent" / "findings.jsonl"
+    base = reports_root if reports_root is not None else settings.reports_dir
+    path = base / "agent" / "findings.jsonl"
     if not path.exists():
         return []
     out: list[dict] = []
