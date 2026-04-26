@@ -131,6 +131,38 @@ def self_critique_cmd() -> None:
         console.print(f"  {r['finding_id']}: {r['current_state']}  --  {r['rationale'][:80]}")
 
 
+@agent_app.command("harden")
+def harden_cmd(
+    fdr_alpha: float = typer.Option(0.10, help="BH-FDR target rate."),
+) -> None:
+    """Re-evaluate every promoted finding under FDR + adversarial replication.
+
+    Writes ``reports/agent/survival.jsonl`` with the per-finding survival
+    record. Intended to run after a session completes (or as part of the
+    scheduled-session pipeline)."""
+    from autosignalx.eval.survival import harden_findings
+
+    records = harden_findings(fdr_alpha=fdr_alpha)
+    if not records:
+        console.print("[yellow]No promoted findings to harden.[/yellow]")
+        return
+
+    n = len(records)
+    n_fdr = sum(1 for r in records if r.get("survives_fdr"))
+    n_full = sum(1 for r in records if r.get("survives_full_test"))
+    n_placebo = sum(1 for r in records if r.get("survives_placebo"))
+    n_block = sum(1 for r in records if r.get("survives_block_holdout"))
+    n_all = sum(1 for r in records if r.get("survives_all"))
+    console.print(
+        f"Hardened [bold]{n}[/bold] findings -- "
+        f"FDR (q<={fdr_alpha}): {n_fdr}/{n}, "
+        f"full-test: {n_full}/{n}, "
+        f"placebo-rejected: {n_placebo}/{n}, "
+        f"block-holdout: {n_block}/{n}, "
+        f"survives all: [bold]{n_all}/{n}[/bold]."
+    )
+
+
 @agent_app.command("status")
 def status_cmd() -> None:
     """Print ledger size and last-round summary."""

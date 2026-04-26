@@ -20,4 +20,10 @@ from pathlib import Path
 os.environ.setdefault("AUTOSIGNALX_REPLAY", "true" if not os.environ.get("DEEPINFRA_API_KEY") else "false")
 
 _app_path = Path(__file__).parent / "app" / "streamlit_app.py"
-exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"))
+# Set __file__ to the real app path so Path(__file__).parents[1] resolves
+# to the repo root inside the exec'd code (otherwise Streamlit Cloud sees
+# the shim's __file__, which is one level too high and breaks runtime
+# checks that look up sibling files by relative path).
+_globals = dict(globals())
+_globals["__file__"] = str(_app_path)
+exec(compile(_app_path.read_text(encoding="utf-8"), str(_app_path), "exec"), _globals)

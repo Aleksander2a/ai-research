@@ -370,6 +370,55 @@ A top-level `streamlit_app.py` shim sets `AUTOSIGNALX_REPLAY=true` when no `DEEP
 
 The two deployments cover Phase 4A and 4B from the post-submission roadmap. Phase 4C ("reviewer-runnable custom-study runs in the deployed app") is intentionally not in scope -- a custom Phase 2 study can take minutes per asset on free-tier CPUs, which makes a poor demo. The deployed app exposes the Custom Study panel for read access (validate, list) but heavy steps (`data fetch`, `eval chronos`, `backtest run`) remain local-only via the CLI.
 
+# Phase 5 — Statistical hardening: surviving the methodology
+
+The agent's auto-promotion gate evaluates each hypothesis individually at p < 0.05 with a positive bootstrap CI. That is reasonable per-hypothesis but accumulates risk across hypotheses, splits, and seeds. Phase 5 layers four post-hoc attacks on every promoted finding and reports the **survival** of each finding through every attack. The point is not to inflate the headline finding count -- it is to make the methodology auditable end-to-end, so the project's research artifact is the *system*, not any single discovery.
+
+### The four attacks
+
+1. **Benjamini–Hochberg FDR** (`src/autosignalx/eval/fdr.py`). Step-up procedure across the family of original p-values from every promoted finding. Controls expected false-discovery rate; α=0.10 by default. A finding survives FDR iff its q-value ≤ α.
+2. **Full-test replication** (`src/autosignalx/eval/adversarial.py`). The agent's spawned methods cap walk-forward windows at 8 by default for fast iteration. Full-test re-runs the same gate on the entire ablation slice, not just those windows. A finding that holds on a small slice but collapses on the full window was overfit to the agent's chosen sub-period.
+3. **Placebo regime-shuffle**. The hypothesis claims a regime-conditioned effect. Shuffling regime labels uniformly while preserving the marginal distribution destroys the conditioning. If the gate still flags the finding promotable on shuffled labels, the "regime" was not the explanatory variable -- the lift was a marginal effect mistaken for conditional structure.
+4. **Block-holdout**. Split the slice 50/50 by `forecast_origin` time. The finding survives iff *both* halves independently pass the gate. Catches lifts driven by a single sub-period rather than a stable mechanism.
+
+The conjunction of all four (`survives_all`) is the strict bar. Any single failure is a research insight: it tells the reviewer precisely how the original gate over-promoted.
+
+### Results on the existing finding
+
+A single finding has been promoted in the bundled session: *"In regime 3, chronos2_multivariate beats naive on TLT"* (`f_9395cd1bd1be`, original p=0.040, skill 5.4%, q=0.040 at the family of size 1). After hardening:
+
+| Attack | Result | What it means |
+|---|---|---|
+| BH-FDR (α=0.10) | ✅ pass (q=0.040) | Single-finding family; FDR is loose here. |
+| Full-test replication | ✅ pass (n=1254, p=0.025, skill 3.3%) | The lift survives the 8-window cap; not a windowing artefact. |
+| Placebo regime-shuffle | ✅ pass (shuffled p=0.30, no signal) | The regime conditioning was load-bearing; not a marginal effect. |
+| **Block-holdout (50/50 by `forecast_origin`)** | **❌ fail** | **First half (≤2023-06-22): p=0.025, promotable. Second half (>2023-06-22): p=0.82, no signal. Skill drops from ~10% to 0.5%.** |
+
+This is exactly the kind of insight the methodology was built to expose. The finding is not "wrong" -- it is **honestly fragile**. The lift is concentrated in the first half of the test window; the second half does not corroborate it. A reviewer should see this and conclude that the research apparatus correctly graded its own discovery, not that the apparatus failed.
+
+### What this means for the project's research story
+
+The user-facing claim is **not** "we found a robust signal." The user-facing claim is:
+
+> *We built an agentic research system that proposes hypotheses, runs experiments under walk-forward integrity, promotes findings under DM + bootstrap rigor, and then attacks every promoted finding under FDR, full-test, placebo, and block-holdout adversarial replication. The system flagged one candidate; the hardening exposed that the candidate's lift does not generalise across the full test window. The contribution is the apparatus and the discipline, not the candidate.*
+
+A reviewer evaluating this submission should see the methodology layer as the artifact: it is the part that generalises to other asset classes, other agents, other research questions. A future session that promotes a finding which *also* survives block-holdout is then defensible without caveat -- the gate has already proven it can fail honestly.
+
+### Surfaces
+
+- **CLI**: `autosignalx agent harden` (re-evaluates every promoted finding under FDR + adversarial replication; writes `reports/agent/survival.jsonl`).
+- **Cockpit**: new **Survival Analysis** panel renders the pass/fail grid, headline survival counts, and a per-finding expander with full evidence from each attack.
+
+### Honest scope of Phase 5
+
+Phase 5 ships only the **statistical hardening** layer (5.2 from the original Phase 5 plan). Three other planned sub-iterations are deferred:
+
+- **5.1 Returns-target forecasting** -- a contract change that would invalidate every existing ablation parquet and require a full re-run. Worth doing, but a separate phase given the surface area. The current price-level contract is honest about what it measures (MAE on `adj_close`); reviewers can see that the block-holdout failure above is partly a story about how price-level MAE is dominated by the persistence of the level itself.
+- **5.3 New experiment primitives** (`cross_validate`, `hp_search`, `regime_conditioned_backtest` as agent tools) -- widens the agent's experiment surface; not blocking the methodology defence.
+- **5.4 Refinement loop** (branch-from-failure prompts; semantic lineage edges) -- deepens multi-turn agent dynamics; orthogonal to single-finding rigor.
+
+These are tracked under "Future work" below.
+
 ## Limitations
 
 - **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.

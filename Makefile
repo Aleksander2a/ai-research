@@ -65,6 +65,9 @@ chat-eval:
 snapshot:
 	uv run autosignalx snapshot build
 
+harden:
+	uv run autosignalx agent harden
+
 scheduled-session:
 	bash scripts/run_session.sh
 

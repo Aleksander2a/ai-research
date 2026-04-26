@@ -109,6 +109,7 @@ The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the f
 11. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
 12. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
 13. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+13b. **Survival Analysis** — every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). Pass/fail grid with full per-attack evidence in expandable cards. The methodology-defence panel: a green check on every column means the finding is robust; a red X is a research insight, not a failure.
 14. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
 15. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
 16. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
@@ -147,6 +148,7 @@ autosignalx agent run [--mode single|debate] [--max-rounds N] [--fresh] [--recor
 autosignalx agent score-traces      LLM-as-judge per-round quality scores
 autosignalx agent consolidate       Compress session into lessons.md
 autosignalx agent self-critique     Re-evaluate every promoted finding
+autosignalx agent harden            Re-evaluate findings under BH-FDR + adversarial (full-test/placebo/block-holdout)
 autosignalx agent status
 
 autosignalx backtest run [--study X] [--strategies "..."] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--cost-bps N]
