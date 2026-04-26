@@ -22,6 +22,7 @@ from autosignalx.eval.cli import eval_app
 from autosignalx.graph.cli import graph_app
 from autosignalx.regime.cli import regime_app
 from autosignalx.signal.cli import signal_app
+from autosignalx.snapshot.cli import snapshot_app
 from autosignalx.study.cli import study_app
 
 app = typer.Typer(
@@ -38,6 +39,7 @@ app.add_typer(graph_app, name="graph")
 app.add_typer(agent_app, name="agent")
 app.add_typer(backtest_app, name="backtest")
 app.add_typer(chat_app, name="chat")
+app.add_typer(snapshot_app, name="snapshot")
 console = Console()
 
 

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoSignal-X — Overview</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+       margin: 0; padding: 0; background: #fafafa; color: #1a1a1a; }
+.topnav { display: flex; gap: 0; background: #1a1a1a; padding: 0; flex-wrap: wrap; }
+.topnav a { color: #ddd; text-decoration: none; padding: 12px 18px; font-weight: 500; transition: background 0.15s; }
+.topnav a:hover { background: #333; color: #fff; }
+.topnav a.active { background: #ff4b4b; color: #fff; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+h1 { font-weight: 700; margin: 0 0 8px 0; }
+h2 { margin-top: 32px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+.caption { color: #666; font-size: 0.95em; margin-bottom: 24px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; background: #fff; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 0.92em; }
+th { background: #f5f5f5; font-weight: 600; }
+tr:hover td { background: #fcfcfc; }
+.card { background: #fff; padding: 16px 20px; border-radius: 6px;
+        margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #eee; }
+.metric { display: inline-block; margin-right: 28px; margin-bottom: 8px; }
+.metric .label { color: #666; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric .value { font-size: 1.5em; font-weight: 700; }
+.empty { color: #999; font-style: italic; padding: 16px; background: #f5f5f5; border-radius: 4px; }
+.footer { text-align: center; color: #999; padding: 24px; font-size: 0.85em; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.92em; }
+.cite { background: #fff4e6; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<nav class="topnav"><a href="index.html" class="active">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="findings.html" class="">Findings</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a></nav>
+<span style='color:#999;font-size:0.85em;margin-left:auto;align-self:center;padding:0 16px'>49 corpus chunks indexed</span>
+<div class="container">
+
+<h1>AutoSignal-X — research cockpit snapshot</h1>
+<p class='caption'>Static, navigable view of every cockpit panel rendered from on-disk artifacts.
+For the interactive version, run <code>make demo</code>.</p>
+
+<div class='card'><div class='metric'><div class='label'>Promoted findings</div><div class='value'>1</div></div><div class='metric'><div class='label'>Ledger entries</div><div class='value'>16</div></div><div class='metric'><div class='label'>LLM calls</div><div class='value'>16</div></div><div class='metric'><div class='label'>Total spend</div><div class='value'>$0.0562</div></div></div>
+
+<h2>Architecture</h2>
+<table><tr><th>Layer</th><th>Implementation</th></tr><tr><td><strong>L1 Forecasting</strong></td><td>Chronos-2 multivariate + ARIMA / naive baselines</td></tr><tr><td><strong>L2 Representation</strong></td><td>Contrastive 1D-CNN encoder + KMeans + HMM</td></tr><tr><td><strong>L3 Reasoning</strong></td><td>Per-regime HistGradientBoosting + permutation importance</td></tr><tr><td><strong>L4 Relational</strong></td><td>GLASSO + Granger + centrality</td></tr><tr><td><strong>L5 Agentic</strong></td><td>LangGraph debate (Theorist / Skeptic / Adjudicator) + DSL + sandboxed codegen</td></tr></table>
+
+<h2>What this snapshot contains</h2>
+<ul>
+<li><strong>Forecasts</strong> — per-method MAE / MAPE / dir-acc, per-(method, regime) stratification.</li>
+<li><strong>Regimes</strong> — KMeans + HMM regime timelines and embedding scatter.</li>
+<li><strong>Findings</strong> — promoted hypotheses with DM + bootstrap evidence.</li>
+<li><strong>Backtest</strong> — simulated trading metrics on the test window.</li>
+<li><strong>Agent</strong> — ledger timeline, trace-quality, self-critique, cost breakdown.</li>
+<li><strong>Chat corpus</strong> — citation index that powers Ask the Memory.</li>
+</ul>
+
+<h2>Live demo & code</h2>
+<p>Live cockpit (Streamlit Community Cloud): <a href="https://autosignal-x.streamlit.app" target="_blank">autosignal-x.streamlit.app</a>.</p>
+<p>Source: <a href="https://github.com/Aleksander2a/ai-research" target="_blank">github.com/Aleksander2a/ai-research</a>.</p>
+
+</div>
+<div class="footer">
+Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>
+</div>
+</body>
+</html>
