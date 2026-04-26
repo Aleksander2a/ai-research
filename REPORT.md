@@ -287,6 +287,46 @@ The backtest does not *invalidate* the research instrument; it validates the **d
 - No live/paper trading wiring.
 - Slippage is a flat bps proxy; no liquidity-aware modelling.
 
+## Custom studies
+
+Phase 2 (post-submission) lifts the hardcoded universe and date range so users can run AutoSignal-X on their own data. A `Study` is a named, isolated workspace declared by a small YAML at `data/studies/<name>/study.yaml`; the universe (assets + macro covariates), the date range, the walk-forward split boundaries, the forecast horizon and rolling step, and the cost assumption are all per-study.
+
+### What is parameterised
+
+- **Universe**: any list of yfinance-resolvable tickers as `assets` and `macro`.
+- **Date range and splits**: `start_date`, `end_date`, `train_end`, `val_end`, `test_end`. Validator enforces `start < train_end < val_end < test_end ≤ end_date`.
+- **Walk-forward**: `forecast_horizon_days`, `rolling_step_days`.
+- **Backtest**: `cost_bps`, optional `backtest_start` (defaults to day after `val_end`).
+
+### Artifact isolation
+
+Each study owns its own tree:
+
+```
+data/studies/<name>/
+    study.yaml                       # config
+    cache/{ohlcv,macro}.parquet      # per-study yfinance pull
+reports/studies/<name>/
+    ablations/{baseline,chronos2}.parquet
+    backtest/runs/<run_id>/{portfolio_daily, trades, metrics, meta}
+    regimes/, signals/, graph/, agent/   # populated as those layers run
+```
+
+Default-flow artifacts under `data/cache/` and `reports/` are unchanged when `--study` is not passed; studies are strictly additive.
+
+### Pre-flight validation
+
+`autosignalx study validate <name>` runs offline checks (date ordering, walk-forward window count, universe size) and surfaces results as `errors / warnings / info`. An opt-in `--check-tickers` flag adds a 5-day yfinance probe to confirm each ticker resolves; failures are reported as warnings, not errors, since transient network issues should not block a run.
+
+### Surfaces
+
+- **CLI**: every subcommand grew an optional `--study X` flag. `autosignalx study {create, list, show, validate, delete}` manages study definitions.
+- **Cockpit**: the **Custom Study** panel exposes the same flow form-based (create / validate / pipeline buttons / status). The sidebar **Study scope** selector switches Forecast Arena and Backtest Arena to read from the chosen study's tree.
+
+### Honest scope of Phase 2
+
+The forecast (baseline + Chronos-2) and backtest layers are fully study-aware. The discovery layers (regime, signal, graph, agent) still write to project-default paths regardless of `--study`. Reason: those layers consume more user time and have subtler precondition requirements (sample sizes, regime-count selection, agent cost) that a future Phase 2 sub-iteration will address. The forecast → backtest pipeline is the path most users want for "see how the system behaves on my universe", so that path was prioritised.
+
 ## Limitations
 
 - **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.
