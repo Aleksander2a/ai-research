@@ -14,6 +14,7 @@ from rich.table import Table
 
 from autosignalx import __version__
 from autosignalx.agent.cli import agent_app
+from autosignalx.backtest.cli import backtest_app
 from autosignalx.config import settings
 from autosignalx.data.cli import data_app
 from autosignalx.eval.cli import eval_app
@@ -32,6 +33,7 @@ app.add_typer(regime_app, name="regime")
 app.add_typer(signal_app, name="signal")
 app.add_typer(graph_app, name="graph")
 app.add_typer(agent_app, name="agent")
+app.add_typer(backtest_app, name="backtest")
 console = Console()
 
 
