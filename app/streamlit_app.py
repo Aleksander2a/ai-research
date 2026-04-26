@@ -1286,9 +1286,12 @@ def render_backtest_arena() -> None:
         return
 
     metrics = json.loads(metrics_path.read_text())
+    sig_payload = metrics.pop("__significance__", {})
     rows = []
     for name, m in metrics.items():
-        rows.append({"strategy": name, **m})
+        # Strip nested per_regime block before flattening for the table.
+        flat = {k: v for k, v in m.items() if k != "per_regime"}
+        rows.append({"strategy": name, **flat})
     metrics_df = pd.DataFrame(rows)
     pretty_cols = {
         "strategy": "Strategy",
@@ -1324,6 +1327,50 @@ def render_backtest_arena() -> None:
         "Equity normalised to 1.0 at run start; drawdown is the fraction "
         "below the running peak. All series include realised costs."
     )
+
+    if sig_payload:
+        st.subheader("Sharpe-difference significance")
+        bench_strat = next(iter(sig_payload.values())).get("benchmark", "benchmark")
+        st.caption(
+            f"Paired moving-block bootstrap of Sharpe(strategy) - Sharpe({bench_strat}). "
+            f"'Significant' = 95% CI excludes 0."
+        )
+        sig_rows = []
+        for name, s in sig_payload.items():
+            sig_rows.append({
+                "Strategy": name,
+                "Sharpe diff": s.get("sharpe_diff", 0.0),
+                "CI low": s.get("ci_low", 0.0),
+                "CI high": s.get("ci_high", 0.0),
+                "p-value": s.get("p_value", 1.0),
+                "Significant": "yes" if s.get("significant") else "no",
+            })
+        st.dataframe(pd.DataFrame(sig_rows), hide_index=True, use_container_width=True)
+
+    # Per-regime breakdown
+    per_regime_blocks = {
+        name: m["per_regime"] for name, m in metrics.items() if "per_regime" in m
+    }
+    if per_regime_blocks:
+        st.subheader("Per-regime metrics")
+        st.caption(
+            "Sharpe / CAGR conditional on regime ID; the equity curve "
+            "is recompounded over each regime's bars in isolation."
+        )
+        chosen = st.selectbox("Strategy", list(per_regime_blocks.keys()))
+        block = per_regime_blocks[chosen]
+        regime_rows = []
+        for r, m in block.items():
+            regime_rows.append({
+                "Regime": r,
+                "N bars": m.get("n_periods", 0),
+                "CAGR": m.get("cagr", 0.0),
+                "Vol": m.get("annual_vol", 0.0),
+                "Sharpe": m.get("sharpe", 0.0),
+                "Max DD": m.get("max_drawdown", 0.0),
+                "Hit Rate": m.get("hit_rate", 0.0),
+            })
+        st.dataframe(pd.DataFrame(regime_rows), hide_index=True, use_container_width=True)
 
 
 PANELS = {

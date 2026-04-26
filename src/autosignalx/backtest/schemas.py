@@ -33,6 +33,23 @@ class BacktestConfig(BaseModel):
     benchmark: str = Field(
         default="SPY", description="Benchmark ticker for relative metrics."
     )
+    benchmark_strategy: str = Field(
+        default="BuyAndHoldSPY",
+        description=(
+            "Strategy name compared against by the bootstrap significance test. "
+            "Must be one of the configured strategies."
+        ),
+    )
+    bootstrap_n: int = Field(
+        default=2000,
+        ge=100,
+        description="Number of bootstrap iterations for Sharpe-diff CI.",
+    )
+    bootstrap_block_size: int = Field(
+        default=5,
+        ge=1,
+        description="Moving-block size (bars) for the paired bootstrap.",
+    )
     seed: int = Field(default=42)
     universe: list[str] | None = Field(
         default=None,

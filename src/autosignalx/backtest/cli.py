@@ -71,6 +71,34 @@ def run_cmd(
         )
     console.print(table)
 
+    # Significance table
+    import json
+    from pathlib import Path
+
+    metrics_json = json.loads(Path(result.metrics_path).read_text())
+    sig = metrics_json.get("__significance__", {})
+    if sig:
+        sig_table = Table(
+            title=f"Sharpe-diff vs {cfg.benchmark_strategy} "
+                  f"(paired block-bootstrap, n={cfg.bootstrap_n}, B={cfg.bootstrap_block_size})",
+            show_lines=False,
+            header_style="bold",
+        )
+        sig_table.add_column("Strategy", style="cyan")
+        sig_table.add_column("Diff", justify="right")
+        sig_table.add_column("95% CI", justify="right")
+        sig_table.add_column("p-value", justify="right")
+        sig_table.add_column("Significant", justify="center")
+        for name, s in sig.items():
+            sig_table.add_row(
+                name,
+                f"{s['sharpe_diff']:+.3f}",
+                f"[{s['ci_low']:+.3f}, {s['ci_high']:+.3f}]",
+                f"{s['p_value']:.3f}",
+                "yes" if s["significant"] else "no",
+            )
+        console.print(sig_table)
+
 
 @backtest_app.command("status")
 def status_cmd() -> None:

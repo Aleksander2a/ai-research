@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from autosignalx.backtest import engine, metrics, signals, strategies
+from autosignalx.backtest import engine, metrics, signals, significance, strategies
 from autosignalx.backtest.schemas import (
     DISCOVERY_END,
     BacktestConfig,
@@ -145,6 +145,35 @@ def run_backtest(
         if trade_rows
         else pd.DataFrame(columns=["timestamp", "strategy", "asset", "dweight", "cost"])
     )
+
+    # Phase 1.5: paired block-bootstrap CI on Sharpe-difference vs benchmark.
+    bench_name = cfg.benchmark_strategy
+    if bench_name in metrics_payload and len(metrics_payload) > 1:
+        bench_returns = (
+            portfolio_df.loc[portfolio_df["strategy"] == bench_name]
+            .set_index("timestamp")["return"]
+        )
+        sig_payload: dict[str, dict] = {}
+        for strat_name in metrics_payload:
+            if strat_name == bench_name:
+                continue
+            strat_returns = (
+                portfolio_df.loc[portfolio_df["strategy"] == strat_name]
+                .set_index("timestamp")["return"]
+            )
+            sig_payload[strat_name] = significance.bootstrap_sharpe_diff(
+                strat_returns,
+                bench_returns,
+                n_bootstrap=cfg.bootstrap_n,
+                block_size=cfg.bootstrap_block_size,
+                seed=cfg.seed,
+            )
+            sig_payload[strat_name]["benchmark"] = bench_name
+            sig_payload[strat_name]["significant"] = significance.is_significant(
+                sig_payload[strat_name]
+            )
+        # Attach to top-level metrics_payload under a reserved key.
+        metrics_payload["__significance__"] = sig_payload
 
     portfolio_path = out_dir / "portfolio_daily.parquet"
     trades_path = out_dir / "trades.parquet"
