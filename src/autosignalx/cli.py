@@ -21,12 +21,14 @@ from autosignalx.eval.cli import eval_app
 from autosignalx.graph.cli import graph_app
 from autosignalx.regime.cli import regime_app
 from autosignalx.signal.cli import signal_app
+from autosignalx.study.cli import study_app
 
 app = typer.Typer(
     name="autosignalx",
     help="AutoSignal-X — modular AI research instrument.",
     no_args_is_help=True,
 )
+app.add_typer(study_app, name="study")
 app.add_typer(data_app, name="data")
 app.add_typer(eval_app, name="eval")
 app.add_typer(regime_app, name="regime")
