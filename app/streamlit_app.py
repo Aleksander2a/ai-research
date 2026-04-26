@@ -221,11 +221,24 @@ def render_forecast_arena() -> None:
     from autosignalx.config import settings
     from autosignalx.eval import harness
 
-    ablations_dir = settings.reports_dir / "ablations"
+    active_study = st.session_state.get("active_study")
+    if active_study:
+        from autosignalx.study import Study
+
+        try:
+            ablations_dir = Study.load(active_study).ablations_dir
+            st.info(f"Reading from study scope: **{active_study}**")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Could not load study {active_study!r}: {e}")
+            return
+    else:
+        ablations_dir = settings.reports_dir / "ablations"
+
     parquets: list[Path] = sorted(ablations_dir.glob("*.parquet")) if ablations_dir.exists() else []
     if not parquets:
+        scope = f" (study={active_study})" if active_study else ""
         st.info(
-            "No ablation results cached yet. Run `make baseline` (or "
+            f"No ablation results cached yet{scope}. Run `make baseline` (or "
             "`uv run autosignalx eval baseline`) to populate."
         )
         return
@@ -1256,9 +1269,22 @@ def render_backtest_arena() -> None:
         "sub-iterations.",
     )
 
-    runs_dir = settings.reports_dir / "backtest" / "runs"
+    active_study = st.session_state.get("active_study")
+    if active_study:
+        from autosignalx.study import Study
+
+        try:
+            runs_dir = Study.load(active_study).backtest_runs_dir
+            st.info(f"Reading from study scope: **{active_study}**")
+        except Exception as e:  # noqa: BLE001
+            st.error(f"Could not load study {active_study!r}: {e}")
+            return
+    else:
+        runs_dir = settings.reports_dir / "backtest" / "runs"
+
     if not runs_dir.exists():
-        st.info("No backtest runs yet. Run `autosignalx backtest run`.")
+        scope = f"(study={active_study})" if active_study else ""
+        st.info(f"No backtest runs yet {scope}. Run `autosignalx backtest run`.")
         return
     runs = sorted([p for p in runs_dir.iterdir() if p.is_dir()], reverse=True)
     if not runs:
@@ -1373,6 +1399,206 @@ def render_backtest_arena() -> None:
         st.dataframe(pd.DataFrame(regime_rows), hide_index=True, use_container_width=True)
 
 
+def render_custom_study() -> None:
+    st.title("Custom Study")
+    st.write(
+        "Run AutoSignal-X on your own asset universe and date range. "
+        "Each study has its own data cache and reports tree under "
+        "`data/studies/<name>/` and `reports/studies/<name>/` so multiple "
+        "studies coexist without collision."
+    )
+    _panel_doc(
+        inputs="Reads `data/studies/<name>/study.yaml` for each study's "
+        "config; the pipeline buttons read `data/studies/<name>/cache/` and "
+        "write to `reports/studies/<name>/{ablations,backtest/runs}/`.",
+        operations="Form-based create/validate; pipeline buttons call the "
+        "pure-Python entry points in `study.pipeline` (data fetch -> "
+        "yfinance; baseline eval -> walk-forward naive/seasonal_naive/arima; "
+        "backtest -> the same vectorized engine as the default flow). "
+        "Heavy steps (Chronos-2 forecasting, agent runs) surface the CLI "
+        "command for the user to run from the terminal where logs stream.",
+        goal="Make AutoSignal-X usable on user-relevant data without "
+        "editing config files or touching the codebase.",
+        interpretation="The Pipeline status table shows which artifacts "
+        "exist for each study. The backtest run id at the bottom is the "
+        "newest output; switch the Sidebar 'Study scope' to that study to "
+        "make Backtest Arena and Forecast Arena read from it.",
+    )
+
+    from autosignalx.study import (
+        Study,
+        StudyExistsError,
+        StudyNotFoundError,
+        list_studies,
+        validation,
+    )
+    from autosignalx.study import pipeline as pipe
+
+    # ---- create new study form ------------------------------------------
+    with st.expander("Create new study", expanded=not list_studies()):
+        with st.form("create_study"):
+            col_a, col_b = st.columns(2)
+            with col_a:
+                name = st.text_input(
+                    "Name", help="Alphanumeric, _, - only; not 'default'."
+                )
+                assets_text = st.text_area(
+                    "Assets (one per line or comma-separated)",
+                    value="SPY\nQQQ\nIWM\nGLD\nTLT",
+                    height=120,
+                )
+                macro_text = st.text_area(
+                    "Macro covariates",
+                    value="^TNX\n^VIX\nDX-Y.NYB\nCL=F",
+                    height=80,
+                )
+                description = st.text_input("Description (optional)")
+            with col_b:
+                start_date = st.text_input("Start date (YYYY-MM-DD)", value="2015-01-01")
+                end_date = st.text_input("End date (YYYY-MM-DD)", value="2024-12-31")
+                train_end = st.text_input("Train end", value="2021-12-31")
+                val_end = st.text_input("Val end", value="2022-12-31")
+                test_end = st.text_input("Test end", value="2024-12-31")
+                horizon = st.number_input("Forecast horizon (bars)", min_value=1, value=21)
+                step = st.number_input("Walk-forward step (bars)", min_value=1, value=21)
+                n_regimes = st.number_input("Number of regimes", min_value=2, max_value=10, value=4)
+                cost_bps = st.number_input("Cost (bps)", min_value=0.0, value=5.0)
+                overwrite = st.checkbox("Overwrite if exists", value=False)
+            submitted = st.form_submit_button("Create study")
+        if submitted:
+            try:
+                tickers = [
+                    t.strip() for chunk in assets_text.replace(",", "\n").splitlines()
+                    for t in [chunk.strip()] if t
+                ]
+                macro_tickers = [
+                    t.strip() for chunk in macro_text.replace(",", "\n").splitlines()
+                    for t in [chunk.strip()] if t
+                ]
+                s = Study(
+                    name=name, description=description,
+                    assets=tickers, macro=macro_tickers,
+                    start_date=start_date, end_date=end_date,
+                    train_end=train_end, val_end=val_end, test_end=test_end,
+                    forecast_horizon_days=int(horizon),
+                    rolling_step_days=int(step),
+                    n_regimes=int(n_regimes),
+                    cost_bps=float(cost_bps),
+                )
+                s.save(overwrite=overwrite)
+                st.success(f"Created study `{name}` at {s.config_path}")
+            except StudyExistsError as e:
+                st.error(str(e))
+            except Exception as e:  # noqa: BLE001
+                st.error(f"Could not create study: {e}")
+
+    # ---- existing studies ------------------------------------------------
+    studies = list_studies()
+    if not studies:
+        st.info(
+            "No studies yet. Create one above, or from the CLI: "
+            "`autosignalx study create --name X --assets ... --start ... --end ...`"
+        )
+        return
+
+    chosen = st.selectbox("Study", studies)
+    try:
+        study = Study.load(chosen)
+    except StudyNotFoundError as e:
+        st.error(str(e))
+        return
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Assets", len(study.assets))
+    col2.metric("Macro", len(study.macro))
+    col3.metric("Span", f"{study.start_date[:4]}-{study.end_date[:4]}")
+    col4.metric("Cost (bps)", study.cost_bps)
+    with st.expander("Full config"):
+        st.json(study.model_dump())
+
+    # ---- validation ------------------------------------------------------
+    st.subheader("Pre-flight validation")
+    check_tickers = st.checkbox("Also probe yfinance for ticker availability (network call)")
+    if st.button("Run validation"):
+        report = validation.validate(study, check_tickers=check_tickers)
+        for msg in report.info:
+            st.info(msg)
+        for msg in report.warnings:
+            st.warning(msg)
+        for msg in report.errors:
+            st.error(msg)
+        if report.ok:
+            st.success("Validation OK")
+
+    # ---- pipeline status -------------------------------------------------
+    st.subheader("Pipeline status")
+    status = pipe.pipeline_status(study)
+    status_rows = [
+        {"Step": "Data cache (OHLCV)", "Status": "ok" if status["ohlcv"] else "missing"},
+        {"Step": "Data cache (macro)", "Status": "ok" if status["macro"] else "missing"},
+        {"Step": "Baseline ablation", "Status": "ok" if status["baseline"] else "missing"},
+        {"Step": "Chronos-2 ablation", "Status": "ok" if status["chronos"] else "missing"},
+        {"Step": "Backtest runs", "Status": f"{status['n_backtest_runs']} run(s)"
+                                              + (f" (latest: {status['latest_run']})"
+                                                 if status['latest_run'] else "")},
+    ]
+    st.dataframe(pd.DataFrame(status_rows), hide_index=True, use_container_width=True)
+
+    # ---- pipeline actions ------------------------------------------------
+    st.subheader("Run pipeline (synchronous)")
+    cols = st.columns(3)
+    with cols[0]:
+        if st.button("1. Fetch data"):
+            with st.spinner(f"Pulling {len(study.assets)} assets + "
+                            f"{len(study.macro)} macro from yfinance..."):
+                try:
+                    out = pipe.run_data_fetch(study)
+                    st.success(
+                        f"Wrote {out['ohlcv_rows']:,} OHLCV rows + "
+                        f"{out['macro_rows']:,} macro rows"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Fetch failed: {e}")
+    with cols[1]:
+        if st.button("2. Run baseline eval"):
+            with st.spinner("Running naive + seasonal_naive + arima ablation..."):
+                try:
+                    out = pipe.run_baseline_eval(study)
+                    st.success(
+                        f"Wrote {out['rows']:,} forecast rows across "
+                        f"{out['windows']} windows -> {out['out_path']}"
+                    )
+                except FileNotFoundError as e:
+                    st.error(f"Baseline eval failed: {e}")
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Baseline eval failed: {e}")
+    with cols[2]:
+        if st.button("3. Run backtest"):
+            with st.spinner("Running backtest..."):
+                try:
+                    out = pipe.run_backtest_for_study(study)
+                    st.success(
+                        f"Run {out['run_id']} ({out['n_strategies']} strategies) "
+                        f"-> {out['artifacts_dir']}"
+                    )
+                except Exception as e:  # noqa: BLE001
+                    st.error(f"Backtest failed: {e}")
+
+    st.caption(
+        "Heavy steps (Chronos-2, agent run) are best launched from the CLI "
+        f"so logs stream to the terminal: \n\n"
+        f"```\n"
+        f"autosignalx eval chronos --study {study.name}\n"
+        f"autosignalx agent run --max-rounds 5\n"
+        f"```"
+    )
+
+    st.caption(
+        "Tip: pick this study in the sidebar **Study scope** selector to "
+        "make Backtest Arena and Forecast Arena read its artifacts."
+    )
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -1381,6 +1607,7 @@ PANELS = {
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
     "Backtest Arena": render_backtest_arena,
+    "Custom Study": render_custom_study,
     "Agent Console": render_agent_console,
     "Auto-Play Replay": render_auto_play,
     "Findings": render_findings,
@@ -1396,5 +1623,26 @@ PANELS = {
 # Streamlit executes the script top-to-bottom on every interaction.
 panel_name = st.sidebar.radio("Panel", list(PANELS.keys()))
 st.sidebar.divider()
+
+# Phase 2: study-scope selector. When set, study-aware panels (Forecast
+# Arena, Backtest Arena) read from that study's reports tree instead of
+# the project default. Stored in session_state so panels can look it up.
+try:
+    from autosignalx.study import list_studies as _list_studies
+
+    _study_names = _list_studies()
+except Exception:  # noqa: BLE001
+    _study_names = []
+_scope_options = ["(default)"] + _study_names
+_scope_choice = st.sidebar.selectbox(
+    "Study scope",
+    _scope_options,
+    index=0,
+    help="Study whose artifacts the panels read. '(default)' uses the project tree.",
+)
+st.session_state["active_study"] = (
+    None if _scope_choice == "(default)" else _scope_choice
+)
+
 st.sidebar.caption(f"AutoSignal-X v{__version__}")
 PANELS[panel_name]()

@@ -29,9 +29,43 @@ console = Console()
 ABLATIONS_DIR = settings.reports_dir / "ablations"
 
 
-def _ensure_ablations_dir() -> Path:
-    ABLATIONS_DIR.mkdir(parents=True, exist_ok=True)
-    return ABLATIONS_DIR
+def _ensure_ablations_dir(study_name: str = "") -> Path:
+    """Resolve the ablations directory: default project tree or per-study."""
+    if study_name:
+        from autosignalx.study import Study
+
+        s = Study.load(study_name)
+        d = s.ablations_dir
+    else:
+        d = ABLATIONS_DIR
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _resolve_eval_inputs(study_name: str, config: str, test_end_override: str):
+    """Return (cache_root, splits, eval_cfg, test_end_value).
+
+    For studies, all knobs come from study.yaml; for the default flow,
+    they come from configs/<config>.yaml.
+    """
+    if study_name:
+        from autosignalx.study import Study
+
+        s = Study.load(study_name)
+        splits_cfg = {
+            "train_end": s.train_end,
+            "val_end": s.val_end,
+            "test_end": s.test_end,
+        }
+        eval_cfg = {
+            "forecast_horizon_days": s.forecast_horizon_days,
+            "rolling_step_days": s.rolling_step_days,
+        }
+        return s.cache_dir, splits_cfg, eval_cfg, test_end_override or s.test_end
+    cfg = load_config(config)
+    eval_cfg = cfg["eval"]
+    splits_cfg = eval_cfg["splits"]
+    return None, splits_cfg, eval_cfg, test_end_override or splits_cfg["test_end"]
 
 
 def _fmt_skill(val: object) -> str:
@@ -54,6 +88,7 @@ def _fmt_value(val: object) -> str:
 @eval_app.command("baseline")
 def baseline_cmd(
     config: str = typer.Option("default", help="Config name under configs/."),
+    study: str = typer.Option("", help="Study name (overrides --config)."),
     test_end: str = typer.Option("", help="Override test_end (YYYY-MM-DD)."),
     methods: str = typer.Option(
         "naive,seasonal_naive,arima",
@@ -65,10 +100,9 @@ def baseline_cmd(
     ),
 ) -> None:
     """Run the baseline ablation across walk-forward windows."""
-    cfg = load_config(config)
-    eval_cfg = cfg["eval"]
-    splits_cfg = eval_cfg["splits"]
-    test_end_value = test_end or splits_cfg["test_end"]
+    cache_root, splits_cfg, eval_cfg, test_end_value = _resolve_eval_inputs(
+        study, config, test_end
+    )
 
     method_map = {
         "naive": baselines.naive_forecast,
@@ -79,7 +113,7 @@ def baseline_cmd(
     if not selected:
         raise typer.BadParameter(f"No valid methods in {methods!r}")
 
-    ohlcv = cache.read_ohlcv()
+    ohlcv = cache.read_ohlcv(cache_root=cache_root)
     windows = splits.walk_forward_windows(
         val_end=splits_cfg["val_end"],
         test_end=test_end_value,
@@ -87,10 +121,10 @@ def baseline_cmd(
         step_days=eval_cfg["rolling_step_days"],
     )
     n_assets = ohlcv["asset"].nunique()
+    label = f"study={study}" if study else f"config={config}"
     console.print(
-        f"Running {len(selected)} method(s) "
-        f"({', '.join(selected)}) "
-        f"across {len(windows)} walk-forward windows x {n_assets} assets..."
+        f"Running {len(selected)} method(s) ({', '.join(selected)}) "
+        f"across {len(windows)} walk-forward windows x {n_assets} assets ({label})..."
     )
 
     forecasts = harness.ablation(selected, ohlcv, windows)
@@ -98,7 +132,7 @@ def baseline_cmd(
         console.print("[yellow]No forecasts produced.[/yellow]")
         raise typer.Exit(code=1)
 
-    out_path = _ensure_ablations_dir() / output
+    out_path = _ensure_ablations_dir(study) / output
     forecasts.to_parquet(out_path, index=False)
     console.print(f"  wrote {len(forecasts):>7,} forecast rows -> {out_path}")
 
@@ -133,6 +167,7 @@ def baseline_cmd(
 @eval_app.command("chronos")
 def chronos_cmd(
     config: str = typer.Option("default", help="Config name under configs/."),
+    study: str = typer.Option("", help="Study name (overrides --config)."),
     test_end: str = typer.Option("", help="Override test_end (YYYY-MM-DD)."),
     methods: str = typer.Option(
         "univariate,multivariate",
@@ -144,10 +179,9 @@ def chronos_cmd(
     ),
 ) -> None:
     """Run the Chronos-2 ablation (univariate and/or multivariate with covariates)."""
-    cfg = load_config(config)
-    eval_cfg = cfg["eval"]
-    splits_cfg = eval_cfg["splits"]
-    test_end_value = test_end or splits_cfg["test_end"]
+    cache_root, splits_cfg, eval_cfg, test_end_value = _resolve_eval_inputs(
+        study, config, test_end
+    )
 
     method_specs: dict[str, dict] = {}
     method_set = {m.strip() for m in methods.split(",") if m.strip()}
@@ -158,8 +192,8 @@ def chronos_cmd(
     if not method_specs:
         raise typer.BadParameter(f"No valid methods in {methods!r}")
 
-    ohlcv = cache.read_ohlcv()
-    macro = cache.read_macro()
+    ohlcv = cache.read_ohlcv(cache_root=cache_root)
+    macro = cache.read_macro(cache_root=cache_root)
     windows = splits.walk_forward_windows(
         val_end=splits_cfg["val_end"],
         test_end=test_end_value,
@@ -167,11 +201,11 @@ def chronos_cmd(
         step_days=eval_cfg["rolling_step_days"],
     )
 
+    label = f"study={study}" if study else f"config={config}"
     console.print(
-        f"Running {len(method_specs)} chronos variant(s) "
-        f"({', '.join(method_specs)}) "
-        f"across {len(windows)} windows x {ohlcv['asset'].nunique()} assets "
-        f"(model load takes ~40s the first time)..."
+        f"Running {len(method_specs)} chronos variant(s) ({', '.join(method_specs)}) "
+        f"across {len(windows)} windows x {ohlcv['asset'].nunique()} assets ({label}, "
+        "model load takes ~40s first time)..."
     )
 
     from autosignalx.forecast import chronos2
@@ -183,7 +217,7 @@ def chronos_cmd(
         console.print("[yellow]No forecasts produced.[/yellow]")
         raise typer.Exit(code=1)
 
-    out_path = _ensure_ablations_dir() / output
+    out_path = _ensure_ablations_dir(study) / output
     forecasts.to_parquet(out_path, index=False)
     console.print(f"  wrote {len(forecasts):>7,} forecast rows -> {out_path}")
 
@@ -212,16 +246,26 @@ def chronos_cmd(
 
 
 @eval_app.command("status")
-def status_cmd() -> None:
-    """List ablation files currently under reports/ablations/."""
-    if not ABLATIONS_DIR.exists():
-        console.print("reports/ablations/ does not exist (no ablations yet).")
+def status_cmd(
+    study: str = typer.Option("", help="Inspect a study's ablations dir."),
+) -> None:
+    """List ablation files."""
+    if study:
+        from autosignalx.study import Study
+
+        target = Study.load(study).ablations_dir
+        title = f"Ablations cache (study={study})"
+    else:
+        target = ABLATIONS_DIR
+        title = "Ablations cache"
+    if not target.exists():
+        console.print(f"{target} does not exist (no ablations yet).")
         return
-    files = sorted(ABLATIONS_DIR.glob("*.parquet"))
+    files = sorted(target.glob("*.parquet"))
     if not files:
-        console.print("reports/ablations/ is empty (no ablations yet).")
+        console.print(f"{target} is empty (no ablations yet).")
         return
-    table = Table(title="Ablations cache", show_lines=False, header_style="bold")
+    table = Table(title=title, show_lines=False, header_style="bold")
     table.add_column("File", style="cyan")
     table.add_column("Size (KB)", justify="right")
     for p in files:

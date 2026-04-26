@@ -32,8 +32,17 @@ def _load_prices(
     universe: tuple[str, ...],
     start: pd.Timestamp,
     end: pd.Timestamp,
+    cache_root: Path | None = None,
 ) -> pd.DataFrame:
-    wide = loader.load_close_wide()
+    if cache_root is not None:
+        from autosignalx.data import cache as data_cache
+
+        ohlcv = data_cache.read_ohlcv(cache_root=cache_root)
+        wide = ohlcv.pivot(
+            index="timestamp", columns="asset", values="adj_close"
+        ).sort_index()
+    else:
+        wide = loader.load_close_wide()
     missing = [a for a in universe if a not in wide.columns]
     if missing:
         raise ValueError(
@@ -47,7 +56,9 @@ def _load_prices(
     return px
 
 
-def _build_context(cfg: BacktestConfig) -> dict:
+def _build_context(
+    cfg: BacktestConfig, reports_root: Path | None = None
+) -> dict:
     """Best-effort load of forecast/regime/finding inputs.
 
     Each load is wrapped: if the artifact is missing, the corresponding
@@ -57,14 +68,14 @@ def _build_context(cfg: BacktestConfig) -> dict:
     """
     ctx: dict = {}
     try:
-        ctx["forecast_signals"] = signals.load_forecast_signals()
+        ctx["forecast_signals"] = signals.load_forecast_signals(reports_root=reports_root)
     except FileNotFoundError:
         ctx["forecast_signals"] = None
     try:
-        ctx["regimes"] = signals.load_regime_series()
+        ctx["regimes"] = signals.load_regime_series(reports_root=reports_root)
     except FileNotFoundError:
         ctx["regimes"] = None
-    ctx["findings"] = signals.load_promoted_findings()
+    ctx["findings"] = signals.load_promoted_findings(reports_root=reports_root)
     ctx["config"] = cfg
     return ctx
 
@@ -83,19 +94,41 @@ def _assert_no_leakage(start: pd.Timestamp) -> None:
 def run_backtest(
     config: BacktestConfig | None = None,
     artifacts_root: Path | None = None,
+    study_name: str = "",
 ) -> BacktestResult:
-    """Run the configured strategies and persist artifacts to disk."""
+    """Run the configured strategies and persist artifacts to disk.
+
+    When ``study_name`` is provided, prices, forecasts, regimes, and
+    findings are read from that study's tree and the run is written
+    under ``reports/studies/<study_name>/backtest/runs/<run_id>``.
+    """
     cfg = config or BacktestConfig()
     universe = tuple(cfg.universe) if cfg.universe else DEFAULT_UNIVERSE
     start = pd.Timestamp(cfg.start_date)
     end = pd.Timestamp(cfg.end_date)
     _assert_no_leakage(start)
 
-    prices = _load_prices(universe, start, end)
-    context = _build_context(cfg)
+    cache_root: Path | None = None
+    reports_root: Path | None = None
+    if study_name:
+        from autosignalx.study import Study
+
+        s = Study.load(study_name)
+        cache_root = s.cache_dir
+        reports_root = s.reports_root
+        if cfg.universe is None:
+            universe = tuple(s.assets)
+
+    prices = _load_prices(universe, start, end, cache_root=cache_root)
+    context = _build_context(cfg, reports_root=reports_root)
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S") + "-" + uuid.uuid4().hex[:6]
-    base = artifacts_root or (settings.reports_dir / "backtest" / "runs")
+    if artifacts_root is not None:
+        base = artifacts_root
+    elif reports_root is not None:
+        base = reports_root / "backtest" / "runs"
+    else:
+        base = settings.reports_dir / "backtest" / "runs"
     out_dir = base / run_id
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,8 +242,17 @@ def run_backtest(
     )
 
 
-def list_runs(artifacts_root: Path | None = None) -> list[Path]:
-    base = artifacts_root or (settings.reports_dir / "backtest" / "runs")
+def list_runs(
+    artifacts_root: Path | None = None, study_name: str = ""
+) -> list[Path]:
+    if artifacts_root is not None:
+        base = artifacts_root
+    elif study_name:
+        from autosignalx.study import Study
+
+        base = Study.load(study_name).backtest_runs_dir
+    else:
+        base = settings.reports_dir / "backtest" / "runs"
     if not base.exists():
         return []
     return sorted([p for p in base.iterdir() if p.is_dir()])

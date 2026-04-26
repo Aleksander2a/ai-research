@@ -89,15 +89,18 @@ The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the f
 5. **Signal Discovery Lab** — per-regime feature ranking; cross-regime importance heatmap.
 6. **Cross-Asset Graph** — partial-correlation matrix; Granger edge table; centrality table.
 7. **Backtest Arena** — simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference vs benchmark, per-regime metric breakdown. Strict no-look-ahead (backtest start > discovery end). Reads `reports/backtest/runs/<run_id>/`.
-8. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
-9. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
-10. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
-11. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
-12. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
-13. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
-14. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
-15. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
-16. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
+8. **Custom Study** — run AutoSignal-X on your own asset universe and date range (Phase 2). Form-based study creation, pre-flight validation (date ordering, walk-forward window count, optional yfinance availability probe), pipeline buttons (data fetch / baseline eval / backtest) with synchronous spinners, and copyable CLI commands for heavy steps. Each study has its own `data/studies/<name>/cache/` and `reports/studies/<name>/` tree.
+9. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
+10. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
+11. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
+12. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
+13. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+14. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
+15. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
+16. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
+17. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
+
+A **Study scope** selector in the sidebar switches study-aware panels (Forecast Arena, Backtest Arena) to read from a chosen study's tree; the default scope reads the project's canonical artifacts.
 
 ## CLI and Make targets
 
@@ -105,12 +108,17 @@ The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the f
 autosignalx version
 autosignalx status                  Layer status, data cache, ablation files
 
-autosignalx data fetch              Pull ETF + macro from yfinance
-autosignalx data status
+autosignalx study create            Create a new study (custom universe / dates)
+autosignalx study list / show       Inspect existing studies
+autosignalx study validate <name>   Pre-flight checks (dates, windows, optional ticker probe)
+autosignalx study delete <name>     Remove a study and its artifacts
 
-autosignalx eval baseline           Run naive + seasonal_naive + arima ablation
-autosignalx eval chronos            Run chronos2_univariate + chronos2_multivariate
-autosignalx eval status
+autosignalx data fetch [--study X]  Pull ETF + macro from yfinance (per study or default)
+autosignalx data status [--study X]
+
+autosignalx eval baseline [--study X]   Run naive + seasonal_naive + arima ablation
+autosignalx eval chronos  [--study X]   Run chronos2_univariate + chronos2_multivariate
+autosignalx eval status   [--study X]
 
 autosignalx regime fit              Train contrastive encoder + KMeans + HMM
 autosignalx regime status
@@ -127,8 +135,8 @@ autosignalx agent consolidate       Compress session into lessons.md
 autosignalx agent self-critique     Re-evaluate every promoted finding
 autosignalx agent status
 
-autosignalx backtest run [--strategies "..."] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--cost-bps N]
-autosignalx backtest status
+autosignalx backtest run [--study X] [--strategies "..."] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--cost-bps N]
+autosignalx backtest status [--study X]
 ```
 
 Make targets wrap each command (`make data`, `make baseline`, `make forecast`, `make regime`, `make signal`, `make graph`, `make agent`, `make scheduled-session`), plus `make sync`, `make test`, `make lint`, `make demo`, `make clean`.
@@ -147,6 +155,29 @@ DEEPINFRA_MODEL_ADJUDICATOR=deepseek-ai/DeepSeek-V4-Pro
 Per-call responses are content-hash cached on disk (`reports/agent/llm_cache/`); re-runs of the same prompt are free and deterministic. Live calls record `(model, role, step, round, prompt_tokens, completion_tokens, latency_ms, cost_usd, session_id)` to `reports/agent/telemetry.jsonl`. Cost defaults are in `agent/telemetry.py`; override per-model via `DEEPINFRA_PRICE_<MODEL>_IN` / `_OUT` env vars (USD per 1M tokens).
 
 **Without a DeepInfra key** (or with `AUTOSIGNALX_REPLAY=true`), the agent runs in deterministic replay mode against `replay/agent_steps.jsonl`; the recorded session is committed to the repo so reviewers see the same trace without provisioning anything.
+
+## Custom studies (Phase 2)
+
+Run AutoSignal-X on your own assets and date range without editing config files. A `Study` is a named, isolated workspace: its own data cache (`data/studies/<name>/cache/`), its own ablations (`reports/studies/<name>/ablations/`), its own backtest runs (`reports/studies/<name>/backtest/runs/`).
+
+```
+autosignalx study create --name tech_megacap \
+  --assets "AAPL,MSFT,NVDA,GOOG,META,AMZN" \
+  --start 2018-01-01 --end 2024-12-31 \
+  --train-end 2022-06-30 --val-end 2023-12-31 --test-end 2024-12-31
+
+autosignalx study validate tech_megacap          # date ordering, window count, universe size
+autosignalx study validate tech_megacap --check-tickers   # also probe yfinance availability
+
+autosignalx data fetch    --study tech_megacap   # pull from yfinance into the study cache
+autosignalx eval baseline --study tech_megacap   # naive + seasonal_naive + arima
+autosignalx eval chronos  --study tech_megacap   # Chronos-2 forecasts (heavy)
+autosignalx backtest run  --study tech_megacap   # simulated trading on the test window
+```
+
+The cockpit's **Custom Study** panel exposes the same flow form-based (create / validate / fetch / baseline / backtest) for users who prefer not to touch the terminal. The sidebar **Study scope** selector switches Forecast Arena and Backtest Arena to read from a chosen study's tree; defaults to the project's canonical artifacts.
+
+Default behaviour (no `--study`) is unchanged across every CLI subcommand, so studies are strictly additive.
 
 ## Scheduled execution
 

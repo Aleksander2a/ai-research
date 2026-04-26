@@ -24,25 +24,43 @@ console = Console()
 
 @backtest_app.command("run")
 def run_cmd(
+    study: str = typer.Option(
+        "", help="Study name; reads prices/forecasts/regimes from study tree."
+    ),
     strategies: str = typer.Option(
         "BuyAndHoldSPY;EqualWeightUniverse;TopKLong:k=3;LongShortKK:k=2;RegimeGated:k=3;FindingDriven",
         help="Semicolon-separated strategy specs (e.g. 'TopKLong:k=3;LongShortKK:k=2').",
     ),
-    start: str = typer.Option("2021-01-01", help="Backtest start (YYYY-MM-DD)."),
-    end: str = typer.Option("2025-12-31", help="Backtest end (YYYY-MM-DD)."),
-    cost_bps: float = typer.Option(5.0, help="One-way transaction cost in bps."),
+    start: str = typer.Option("", help="Backtest start (default: study.effective_backtest_start or 2021-01-01)."),
+    end: str = typer.Option("", help="Backtest end (default: study.test_end or 2025-12-31)."),
+    cost_bps: float = typer.Option(-1.0, help="One-way transaction cost in bps; -1 = use study/default."),
     seed: int = typer.Option(42, help="Random seed."),
 ) -> None:
     """Run the backtest ablation and write artifacts."""
+    if study:
+        from autosignalx.study import Study
+
+        s = Study.load(study)
+        eff_start = start or s.effective_backtest_start
+        eff_end = end or s.test_end
+        eff_cost = cost_bps if cost_bps >= 0 else s.cost_bps
+        eff_universe = list(s.assets)
+    else:
+        eff_start = start or "2021-01-01"
+        eff_end = end or "2025-12-31"
+        eff_cost = cost_bps if cost_bps >= 0 else 5.0
+        eff_universe = None
+
     strat_list = [s.strip() for s in strategies.split(";") if s.strip()]
     cfg = BacktestConfig(
         strategies=strat_list,
-        start_date=start,
-        end_date=end,
-        cost_bps=cost_bps,
+        start_date=eff_start,
+        end_date=eff_end,
+        cost_bps=eff_cost,
         seed=seed,
+        universe=eff_universe,
     )
-    result = runner.run_backtest(cfg)
+    result = runner.run_backtest(cfg, study_name=study)
 
     console.print(f"Wrote artifacts -> [cyan]{result.artifacts_dir}[/cyan]")
     table = Table(
@@ -101,13 +119,17 @@ def run_cmd(
 
 
 @backtest_app.command("status")
-def status_cmd() -> None:
+def status_cmd(
+    study: str = typer.Option("", help="Inspect a study's backtest runs."),
+) -> None:
     """List available backtest runs."""
-    runs = runner.list_runs()
+    runs = runner.list_runs(study_name=study)
     if not runs:
-        console.print("reports/backtest/runs/ is empty (run `autosignalx backtest run`).")
+        scope = f"study={study}" if study else "default"
+        console.print(f"No backtest runs ({scope}). Run `autosignalx backtest run`.")
         return
-    table = Table(title="Backtest runs", show_lines=False, header_style="bold")
+    title = f"Backtest runs (study={study})" if study else "Backtest runs"
+    table = Table(title=title, show_lines=False, header_style="bold")
     table.add_column("Run ID", style="cyan")
     table.add_column("Path")
     for r in runs:
