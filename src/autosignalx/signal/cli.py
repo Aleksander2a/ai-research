@@ -104,6 +104,70 @@ def rank_cmd(
         console.print(table)
 
 
+@signal_app.command("stability")
+def stability_cmd(
+    regime_method: str = typer.Option("kmeans_contrastive", help="Regime detector."),
+    n_windows: int = typer.Option(6, help="Number of walk-forward windows."),
+) -> None:
+    """Walk-forward feature-importance stability across rolling windows.
+
+    Slides ``n_windows`` windows across the timeline, re-fits the
+    per-regime ranker inside each, and reports per-(regime, feature)
+    stability metrics: mean rank, rank std, top-5 share, and a
+    composite stability score in [0, 1]. A feature with high mean
+    importance *and* high stability is research-grade; high mean +
+    low stability is an averaging artefact."""
+    from autosignalx.signal import stability
+
+    SIGNALS_DIR.mkdir(parents=True, exist_ok=True)
+    console.print(f"Building features for walk-forward ranking ({n_windows} windows)...")
+    ohlcv = cache.read_ohlcv()
+    macro_wide = loader.load_macro_wide()
+    regime_labels = load_regime_labels(regime_method)
+
+    parts = []
+    for asset, asset_ohlcv in ohlcv.groupby("asset", observed=True):
+        feats = features.build_features_target(asset_ohlcv, macro_wide)
+        feats["asset"] = asset
+        parts.append(feats)
+    feat_df = pd.concat(parts, ignore_index=True)
+    feature_cols = features.feature_columns(feat_df)
+
+    out = stability.build_and_save(
+        features_df=feat_df,
+        regime_labels=regime_labels,
+        feature_cols=feature_cols,
+        n_windows=n_windows,
+    )
+    if out["walk_forward"].empty:
+        console.print("[yellow]No walk-forward rankings produced.[/yellow]")
+        raise typer.Exit(code=1)
+    console.print(
+        f"  wrote walk_forward_ranking.parquet ({len(out['walk_forward']):,} rows) + "
+        f"signal_stability.parquet ({len(out['stability']):,} rows)."
+    )
+
+    for regime_id, group in out["stability"].groupby("regime_id", observed=True):
+        table = Table(
+            title=f"Regime {regime_id} -- top 5 by mean importance (with stability)",
+            show_lines=False, header_style="bold",
+        )
+        table.add_column("Feature", style="cyan")
+        table.add_column("Mean importance", justify="right")
+        table.add_column("Mean rank", justify="right")
+        table.add_column("Stability", justify="right")
+        table.add_column("Top-5 share", justify="right")
+        for _, row in group.head(5).iterrows():
+            table.add_row(
+                str(row["feature"]),
+                f"{row['mean_importance']:+.3f}",
+                f"{row['mean_rank']:.1f}",
+                f"{row['stability']:.2f}",
+                f"{row['top5_share']:.2f}",
+            )
+        console.print(table)
+
+
 @signal_app.command("status")
 def status_cmd() -> None:
     """List cached signal-ranking files."""

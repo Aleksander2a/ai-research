@@ -26,7 +26,12 @@ The system answers one question: **for which (regime, asset, method) combination
 | `reports/ablations/*.parquet` | One file per forecasting method; long-format forecasts with the full forecast contract (target, prediction, intervals, origin, etc.) |
 | `reports/regimes/{kmeans,hmm,embeddings}.parquet` | Per-timestep regime labels from two detectors; raw contrastive embeddings |
 | `reports/signals/signal_ranking.parquet` | Per-(regime, feature) importance rankings |
-| `reports/graph/{edges,centrality}.parquet` | Cross-asset partial-correlation + Granger edges; per-node centrality |
+| `reports/signals/walk_forward_ranking.parquet` | Per-(window, regime, feature) walk-forward importance with rank |
+| `reports/signals/signal_stability.parquet` | Per-(regime, feature) stability summary: mean rank, rank std, top-K share, stability score |
+| `reports/graph/{edges,centrality}.parquet` | Global cross-asset partial-correlation + Granger edges; per-node centrality |
+| `reports/graph/per_regime/regime_<id>/{edges,centrality}.parquet` | Same machinery rebuilt within each regime's data subset |
+| `reports/graph/per_regime/regime_sensitivity.parquet` | Per-asset cross-regime centrality dispersion (max - min betweenness, etc.) |
+| `reports/agent/survival.jsonl` | Every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo, block-holdout) |
 | `reports/agent/ledger.jsonl` | Append-only record of every agent step (propose / theorist / skeptic / experiment / critique / adjudicator / decide) |
 | `reports/agent/findings.jsonl` | Promoted findings (passed the DM + bootstrap gate); idempotent on hypothesis content with replication tracking |
 | `reports/agent/lessons.md` | Markdown summary appended per session, used as long-horizon memory for the next session |
@@ -46,8 +51,8 @@ Summary:
 - **Forecast layer** writes `reports/ablations/<method>.parquet`. **Eval, agent, cockpit read these.**
 - **Regime layer** writes `reports/regimes/{kmeans,hmm,embeddings}.parquet`. **Signal layer joins forecast_origin → regime_id; agent reads through `tools.context_snapshot()`; cockpit reads.**
 - **Signal layer** writes `reports/signals/signal_ranking.parquet`. **Agent reads through `tools.get_top_features(regime_id)`; cockpit reads.**
-- **Graph layer** writes `reports/graph/{edges,centrality}.parquet`. **Agent reads through `tools.get_centrality_summary()`; cockpit reads.**
-- **Agent layer** reads from all of the above; writes the `reports/agent/*` artifacts above. **Cockpit reads everything.**
+- **Graph layer** writes `reports/graph/{edges,centrality}.parquet` (global) plus `reports/graph/per_regime/regime_<id>/...` + `regime_sensitivity.parquet` (regime-conditioned). **Agent reads through `tools.get_centrality_summary()`; cockpit reads.**
+- **Agent layer** reads from all of the above; writes `reports/agent/*` artifacts. The `agent harden` step writes `reports/agent/survival.jsonl` after re-evaluating every promoted finding under FDR + adversarial replication. **Cockpit reads everything.**
 
 ## Live demo
 
@@ -78,8 +83,8 @@ Five model layers plus an agent loop:
 |---|---|---|
 | **L1 Forecasting** | Probabilistic point + interval forecasts | Frozen Chronos-2 (multivariate, with `past_covariates`) and three classical baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices) |
 | **L2 Representation** | Per-timestep regime labels | Contrastive 1D-CNN encoder (16-dim embeddings, 60-day windows, triplet loss) + KMeans on embeddings; Gaussian HMM on raw features as a parallel detector |
-| **L3 Reasoning** | Per-regime feature importance | `HistGradientBoostingClassifier` per regime + custom permutation importance |
-| **L4 Relational** | Cross-asset dependency structure | GLASSO partial correlations (`GraphicalLassoCV`) + Granger causality (statsmodels) + NetworkX centrality (degree / eigenvector / betweenness) |
+| **L3 Reasoning** | Per-regime feature importance | `HistGradientBoostingClassifier` per regime + custom permutation importance; **walk-forward stability** layer (rolling-window refits with rank-stability metrics) |
+| **L4 Relational** | Cross-asset dependency structure | GLASSO partial correlations (`GraphicalLassoCV`) + Granger causality (statsmodels) + NetworkX centrality (degree / eigenvector / betweenness); **regime-conditioned variant** rebuilds the graph within each regime's data subset and emits per-asset cross-regime centrality dispersion |
 | **L5 Agentic** | Hypothesis generation, experimentation, statistical promotion | LangGraph state machine (debate mode: Theorist / Skeptic / Adjudicator with three different DeepInfra LLMs); experiment surface includes slicing cached forecasts, authoring methods via a constrained DSL, and executing sandboxed Python forecast functions |
 
 The agent has three escalating ways to author experiments:
@@ -94,26 +99,28 @@ For the data flow diagram, contract schemas, and per-layer wiring, see [docs/ARC
 
 ## Cockpit panels
 
-The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the full reviewer journey:
+The Streamlit cockpit has 19 panels in the sidebar. Walk left-to-right for the full reviewer journey:
 
 1. **Overview** — system status, headline finding, layer grid.
 2. **Data** — cache inventory; ETF and macro time series.
 3. **Forecast Arena** — per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands.
 4. **Regime Explorer** — KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime.
 5. **Signal Discovery Lab** — per-regime feature ranking; cross-regime importance heatmap.
-6. **Cross-Asset Graph** — partial-correlation matrix; Granger edge table; centrality table.
-7. **Backtest Arena** — simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference vs benchmark, per-regime metric breakdown. Strict no-look-ahead (backtest start > discovery end). Reads `reports/backtest/runs/<run_id>/`.
-8. **Custom Study** — run AutoSignal-X on your own asset universe and date range (Phase 2). Form-based study creation, pre-flight validation (date ordering, walk-forward window count, optional yfinance availability probe), pipeline buttons (data fetch / baseline eval / backtest) with synchronous spinners, and copyable CLI commands for heavy steps. Each study has its own `data/studies/<name>/cache/` and `reports/studies/<name>/` tree.
-9. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
-10. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
-11. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
-12. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
-13. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
-13b. **Survival Analysis** — every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). Pass/fail grid with full per-attack evidence in expandable cards. The methodology-defence panel: a green check on every column means the finding is robust; a red X is a research insight, not a failure.
-14. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
-15. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
-16. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
-17. **Ask the Memory** — grounded RAG chat over the run corpus (ledger, findings, lessons, trace quality, self-critique, telemetry, backtests). Every claim carries a citation back to the source artifact; off-corpus questions are refused. Live mode uses DeepInfra `bge-large-en-v1.5` embeddings; replay/no-key mode uses deterministic hashed-bag embeddings.
+6. **Cross-Asset Graph** — global partial-correlation matrix; Granger edge table; centrality table.
+7. **Regime-Conditioned Graph** — same machinery rebuilt per regime; surfaces hubs and bridges that flip role across regimes plus a per-asset regime-sensitivity table (betweenness range across regimes).
+8. **Signal Stability** — walk-forward feature-importance rankings; per-(regime, feature) stability metrics (mean rank, rank std, top-K share, composite stability); rank-trajectory chart across windows.
+9. **Backtest Arena** — simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference vs benchmark, per-regime metric breakdown. Strict no-look-ahead (backtest start > discovery end). Reads `reports/backtest/runs/<run_id>/`.
+10. **Custom Study** — run AutoSignal-X on your own asset universe and date range (Phase 2). Form-based study creation, pre-flight validation (date ordering, walk-forward window count, optional yfinance availability probe), pipeline buttons (data fetch / baseline eval / backtest) with synchronous spinners, and copyable CLI commands for heavy steps. Each study has its own `data/studies/<name>/cache/` and `reports/studies/<name>/` tree.
+11. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
+12. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
+13. **Findings** — promoted findings sorted by skill-vs-naive; expandable cards with full DM/bootstrap evidence.
+14. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status.
+15. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+16. **Survival Analysis** — every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). Pass/fail grid with full per-attack evidence in expandable cards. The methodology-defence panel: a green check on every column means the finding is robust; a red X is a research insight, not a failure.
+17. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
+18. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
+19. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
+20. **Ask the Memory** — grounded RAG chat over the run corpus (ledger, findings, lessons, trace quality, self-critique, telemetry, backtests, survival, regime-graph, signal-stability). Every claim carries a citation back to the source artifact; off-corpus questions are refused. Live mode uses DeepInfra `bge-large-en-v1.5` embeddings; replay/no-key mode uses deterministic hashed-bag embeddings.
 
 A **Study scope** selector in the sidebar switches study-aware panels (Forecast Arena, Backtest Arena) to read from a chosen study's tree; the default scope reads the project's canonical artifacts.
 
@@ -139,9 +146,11 @@ autosignalx regime fit              Train contrastive encoder + KMeans + HMM
 autosignalx regime status
 
 autosignalx signal rank             Per-regime feature importance via HistGradBoost
+autosignalx signal stability        Walk-forward stability across rolling windows
 autosignalx signal status
 
-autosignalx graph build             GLASSO + Granger + centrality
+autosignalx graph build             Global GLASSO + Granger + centrality
+autosignalx graph build-per-regime  Same machinery within each regime + sensitivity ranking
 autosignalx graph status
 
 autosignalx agent run [--mode single|debate] [--max-rounds N] [--fresh] [--record-replay]

@@ -24,7 +24,10 @@ PAGES = [
     ("index", "Overview"),
     ("forecasts", "Forecasts"),
     ("regimes", "Regimes"),
+    ("regime_graph", "Regime graph"),
+    ("signal_stability", "Signal stability"),
     ("findings", "Findings"),
+    ("survival", "Survival"),
     ("backtest", "Backtest"),
     ("agent", "Agent"),
     ("chat", "Chat corpus"),
@@ -181,7 +184,10 @@ For the interactive version, run <code>make demo</code>.</p>
 <ul>
 <li><strong>Forecasts</strong> — per-method MAE / MAPE / dir-acc, per-(method, regime) stratification.</li>
 <li><strong>Regimes</strong> — KMeans + HMM regime timelines and embedding scatter.</li>
+<li><strong>Regime graph</strong> — per-regime GLASSO + Granger + centrality. Surfaces hubs/bridges that only matter in certain regimes.</li>
+<li><strong>Signal stability</strong> — walk-forward feature-importance rankings; distinguishes stable signals from averaging artefacts.</li>
 <li><strong>Findings</strong> — promoted hypotheses with DM + bootstrap evidence.</li>
+<li><strong>Survival</strong> — every promoted finding under BH-FDR + adversarial replication (full-test, placebo, block-holdout).</li>
 <li><strong>Backtest</strong> — simulated trading metrics on the test window.</li>
 <li><strong>Agent</strong> — ledger timeline, trace-quality, self-critique, cost breakdown.</li>
 <li><strong>Chat corpus</strong> — citation index that powers Ask the Memory.</li>
@@ -446,6 +452,138 @@ def _page_agent(reports_dir: Path) -> tuple[str, int]:
     return body, n_figs
 
 
+def _page_survival(reports_dir: Path) -> tuple[str, int]:
+    p = reports_dir / "agent" / "survival.jsonl"
+    if not p.exists():
+        return _empty_section(
+            "No survival records. Run <code>autosignalx agent harden</code>."
+        ), 0
+    records = _read_jsonl(p)
+    if not records:
+        return _empty_section("Survival file empty."), 0
+
+    def _mark(v) -> str:  # noqa: ANN001
+        if v is True:
+            return "✅"
+        if v is False:
+            return "❌"
+        return "—"
+
+    rows = []
+    for r in records:
+        rows.append({
+            "finding_id": r.get("finding_id"),
+            "method": r.get("method"),
+            "filters": str(r.get("filters")),
+            "p_orig": f"{r.get('original_p', float('nan')):.4f}" if r.get("original_p") is not None else "—",
+            "q_FDR": f"{r.get('fdr_q', float('nan')):.4f}" if r.get("fdr_q") is not None else "—",
+            "FDR": _mark(r.get("survives_fdr")),
+            "full-test": _mark(r.get("survives_full_test")),
+            "placebo": _mark(r.get("survives_placebo")),
+            "block-holdout": _mark(r.get("survives_block_holdout")),
+            "all": _mark(r.get("survives_all")),
+        })
+
+    n = len(records)
+    n_all = sum(1 for r in records if r.get("survives_all"))
+    n_fdr = sum(1 for r in records if r.get("survives_fdr"))
+    n_block = sum(1 for r in records if r.get("survives_block_holdout"))
+
+    headline = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>Promoted</div><div class='value'>{n}</div></div>"
+        f"<div class='metric'><div class='label'>Survive FDR</div><div class='value'>{n_fdr}/{n}</div></div>"
+        f"<div class='metric'><div class='label'>Survive block-holdout</div><div class='value'>{n_block}/{n}</div></div>"
+        f"<div class='metric'><div class='label'>Survive all attacks</div><div class='value'>{n_all}/{n}</div></div>"
+        f"</div>"
+    )
+
+    note = ""
+    if n > 0 and n_all == 0:
+        note = (
+            "<div class='card'><strong>Zero of the promoted findings survive every attack.</strong> "
+            "The hardening surfaced exactly which fragility each finding has -- the "
+            "methodology is the artifact, not the count.</div>"
+        )
+
+    body = (
+        "<h1>Survival Analysis</h1>"
+        "<p class='caption'>Every promoted finding re-evaluated under BH-FDR + adversarial "
+        "replication (full-test, placebo regime-shuffle, 50/50 block-holdout). A red X is a "
+        "research insight, not a failure.</p>"
+        + headline
+        + note
+        + f"<div class='card'>{_df_to_html_table(pd.DataFrame(rows), max_rows=50)}</div>"
+    )
+    return body, 0
+
+
+def _page_per_regime_graph(reports_dir: Path) -> tuple[str, int]:
+    root = reports_dir / "graph" / "per_regime"
+    sens_p = root / "regime_sensitivity.parquet"
+    if not root.exists() or not sens_p.exists():
+        return _empty_section(
+            "No per-regime graph artifacts. Run <code>autosignalx graph build-per-regime</code>."
+        ), 0
+
+    sens = pd.read_parquet(sens_p)
+    cards: list[str] = []
+    for d in sorted(root.iterdir()):
+        if not d.is_dir() or not d.name.startswith("regime_"):
+            continue
+        cent_p = d / "centrality.parquet"
+        if not cent_p.exists():
+            continue
+        cent = pd.read_parquet(cent_p).sort_values("eigenvector_centrality", ascending=False)
+        rid = d.name.split("_", 1)[1]
+        rows = cent[["node", "degree_centrality", "eigenvector_centrality", "betweenness_centrality"]]
+        cards.append(
+            f"<div class='card'><h3 style='margin-top:0'>Regime {rid}</h3>"
+            f"{_df_to_html_table(rows.head(10))}</div>"
+        )
+
+    body = (
+        "<h1>Regime-Conditioned Graph</h1>"
+        "<p class='caption'>Cross-asset structure recomputed within each regime's data subset. "
+        "Surfaces hubs and bridges that flip role across regimes -- structural information the "
+        "global graph averages away.</p>"
+        f"<h2>Regime sensitivity (assets ranked by betweenness range)</h2>"
+        f"<div class='card'>{_df_to_html_table(sens, max_rows=12)}</div>"
+        + "".join(cards)
+    )
+    return body, 0
+
+
+def _page_signal_stability(reports_dir: Path) -> tuple[str, int]:
+    p = reports_dir / "signals" / "signal_stability.parquet"
+    if not p.exists():
+        return _empty_section(
+            "No signal-stability summary. Run <code>autosignalx signal stability</code>."
+        ), 0
+    df = pd.read_parquet(p)
+    if df.empty:
+        return _empty_section("Stability summary empty."), 0
+
+    cards: list[str] = []
+    for rid, group in df.groupby("regime_id", observed=True):
+        cols = [c for c in [
+            "feature", "mean_importance", "mean_rank", "rank_std", "stability",
+        ] + [c for c in group.columns if c.startswith("top")] if c in group.columns]
+        cards.append(
+            f"<div class='card'><h3 style='margin-top:0'>Regime {rid}</h3>"
+            f"{_df_to_html_table(group[cols].head(10))}</div>"
+        )
+
+    body = (
+        "<h1>Signal Stability</h1>"
+        "<p class='caption'>Walk-forward feature-importance stability. A feature with high "
+        "mean importance AND high stability AND high top-K share is research-grade; high "
+        "importance with low stability is an averaging artefact.</p>"
+        + "".join(cards)
+    )
+    return body, 0
+
+
 def _page_chat(reports_dir: Path) -> tuple[str, int]:
     chat_dir = reports_dir / "chat"
     chunks_path = chat_dir / "chunks.jsonl"
@@ -500,7 +638,10 @@ def build_snapshot(
         ("index", _page_index),
         ("forecasts", _page_forecasts),
         ("regimes", _page_regimes),
+        ("regime_graph", _page_per_regime_graph),
+        ("signal_stability", _page_signal_stability),
         ("findings", _page_findings),
+        ("survival", _page_survival),
         ("backtest", _page_backtest),
         ("agent", _page_agent),
         ("chat", _page_chat),

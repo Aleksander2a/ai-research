@@ -419,25 +419,83 @@ Phase 5 ships only the **statistical hardening** layer (5.2 from the original Ph
 
 These are tracked under "Future work" below.
 
-## Limitations
+# Phase 6 — Structural enrichments (post-submission)
 
-- **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.
-- **Multiple-comparison risk.** The agent ran several hypotheses; one passing p < 0.05 may not survive Bonferroni correction. The headline framing is "one specific slice with one DM-significant lift", not "robust generalization".
-- **Single asset class.** Conclusions about naive's strength may be specific to liquid daily ETFs. The methodology (harness, contracts, agent loop) generalizes; the findings are class-specific.
-- **Codegen sandbox is a soft boundary.** AST validation + restricted globals defend against accidental damage, not adversarial Python. Production hardening would require OS-level isolation (firejail / gVisor / WASM) or process separation.
-- **Macro covariate universe is four signals.** Equity-implied vol surfaces, credit spreads, sector rotation factors, and term-structure shape are not in the universe.
-- **Agent-authored methods cap at 8 walk-forward windows by default** for fast iteration. Promoted findings should be re-validated on the full test period before acting on them.
-- **Cross-asset graph is global, not per-regime.** Computing GLASSO + Granger within each regime would expose regime-conditional structural changes.
-- **Forecast targets are price levels (`adj_close`).** Returns and risk-adjusted-target shifts (Sharpe, Sortino) are not modeled.
+Phase 6 closes two of the structural gaps explicitly listed under Phase-5 limitations: the cross-asset graph being global rather than per-regime, and the per-regime signal ranking being a single fit rather than a walk-forward stability check. Both ship as **complementary** layers (the original artifacts are preserved); the new artifacts give reviewers an honest second look at the structure the agent had access to.
+
+### 6A — Regime-conditioned cross-asset graph
+
+`autosignalx graph build-per-regime` runs the existing GLASSO + Granger + centrality machinery once per regime, on the subset of timesteps with that regime's KMeans label. Output:
+
+* `reports/graph/per_regime/regime_<id>/edges.parquet` and `centrality.parquet` per regime.
+* `reports/graph/per_regime/regime_sensitivity.parquet` -- one row per asset, summarising the cross-regime range of degree, eigenvector, and betweenness centrality. Larger range = the asset's structural role flips more dramatically across regimes; this is research-grade input for a regime-aware allocator.
+
+On the bundled artifacts the per-regime build surfaces several real structural observations:
+
+| Regime | Top hub (eig.) | Top bridge (betw.) |
+|---|---|---|
+| 0 | SPY | TLT |
+| 1 | EEM | TLT |
+| 2 | SPY | GLD |
+| 3 | SPY | TLT |
+
+* **EEM displaces SPY as the primary hub in regime 1** -- consistent with regime 1 being a non-US-led state.
+* **TLT is the bridge in 3 of 4 regimes** -- a stable cross-asset role as the safe-haven flow conduit.
+* **Top regime-sensitive asset by betweenness range: GLD (0.000 → 0.619)**. GLD goes from peripheral to the most-bridged asset depending on regime. TLT (0.048 → 0.571) is a close second.
+
+### 6B — Walk-forward signal-importance stability
+
+`autosignalx signal stability` slides N walk-forward windows across the timeline and refits the per-regime HistGradientBoosting + permutation importance ranker inside each. Output:
+
+* `reports/signals/walk_forward_ranking.parquet` -- per-(window, regime, feature) importance + rank.
+* `reports/signals/signal_stability.parquet` -- per-(regime, feature) summary: mean importance, mean rank, rank std, top-K share, composite stability ∈ [0, 1].
+
+A feature with high mean importance *and* high stability *and* high top-K share is research-grade. High importance with low stability is an averaging artefact that the original single-fit ranker would have missed.
+
+On the bundled artifacts (4 walk-forward windows, KMeans regimes):
+
+| Regime | Top-1 stable feature | Mean rank | Stability | Top-5 share |
+|---|---|---|---|---|
+| 1 | `macro_DX-Y.NYB_level` | 3.0 | 0.83 | 1.00 |
+| 2 | `macro_^TNX_level` | 2.0 | 0.92 | 1.00 |
+| 3 | `macd_signal` | 1.8 | 0.94 | 1.00 |
+
+Each of these features is in the top 5 in every walk-forward window for its regime -- a much stronger signal than "ranked first when averaged over the whole period." The dollar-index signal in regime 1 and the 10Y-yield signal in regime 2 are both economically interpretable: regime 1 looks like a USD-driven state, regime 2 like a rates-driven state.
+
+### Surfaces
+
+- **CLI**: `autosignalx graph build-per-regime`, `autosignalx signal stability`.
+- **Cockpit**: new **Regime-Conditioned Graph** and **Signal Stability** panels (live + static-snapshot).
+- **Chat corpus**: extended with `regime_graph:<asset>` and `signal_stability:r<id>/<feature>` citation kinds, plus `survival:<finding_id>` from Phase 5.
+
+### Honest scope of Phase 6
+
+The walk-forward stability layer reuses the same single-period KMeans regime labels for every window -- ideally the regime detector itself would also be refit per window, but that introduces label-permutation across windows (the "same" regime can swap IDs across refits) and is a substantially larger refactor. The current implementation answers "given this regime taxonomy, which features are stably important inside each regime over time?" -- a useful but narrower question than fully walk-forward regime-aware ranking. The per-regime graph similarly assumes the regime taxonomy is fixed.
+
+## Limitations (post-Phase 6)
+
+Phase 6 closes two prior limitations (cross-asset graph now per-regime; signal ranking now walk-forward stable). Remaining limitations:
+
+- **Multi-session replication is still single-session.** Survival per finding is one record per session. Cross-session aggregation exists in the Sessions panel but is currently informational rather than gating.
+- **Forecast targets are price levels (`adj_close`).** This is the largest remaining limitation: MAE on `adj_close` is dominated by price persistence, which means even a fully-passing finding (FDR + full-test + placebo + block-holdout) would still be partly measuring trivial predictability. Returns-target forecasting (originally Phase 5.1) is the highest-priority next step.
+- **Codegen sandbox is a soft boundary.** AST validation + restricted globals defend against accidental damage, not adversarial Python.
+- **Macro covariate universe is four signals.** No equity-implied vol, credit spreads, sector rotation factors, or term-structure shape.
+- **Agent-authored methods cap at 8 walk-forward windows by default.** Phase 5's full-test replication catches when a finding fails this cap, but the agent itself still operates inside it.
+- **Single asset class.** Liquid daily ETFs only. The Phase 2 custom-study layer enables other universes; honest defence requires running an end-to-end study on at least one alternative class.
 - **No live deployment evaluation.** Latency, slippage, no-trade horizons, and execution simulation are absent.
 
 ## Future work
 
-- **Replication via scheduled runs.** `scripts/run_session.sh` is cron-compatible. Cross-session productivity is already aggregated in the Sessions cockpit panel.
-- **Per-regime cross-asset graph** (pass `returns[regime_mask]` to `partial_correlation_edges` / `granger_edges` per regime).
-- **Walk-forward signal ranking** (per-(regime, training-window) instead of random subsample within regime).
-- **Wider experiment-tool surface** (per-spec hyperparameter search; explicit cross-validation in the experiment node).
-- **Returns-target forecasting** (extend the forecast contract with optional `target_type` field).
-- **Live-execution-aware backtester.** The Phase 1 backtester applies a flat bps cost; a richer implementation would model latency, slippage by liquidity, and partial fills.
-- **Backtest extensions.** Multi-horizon strategies (1d / 5d / 21d) using the full Chronos-2 horizon panel, rather than only the holding-period bar; vol-targeting and Kelly sizing on top of the existing strategies; expanded universe via the Phase 2 custom-input layer.
+Closed in Phase 5: ~~multiple-comparison correction~~ (BH-FDR), ~~adversarial replication~~ (full-test, placebo, block-holdout).
+Closed in Phase 6: ~~per-regime cross-asset graph~~, ~~walk-forward signal ranking~~ (now produces a stability summary).
+
+Open:
+
+- **Returns-target forecasting** -- the largest remaining gap. Extend the forecast contract with `target_type ∈ {price, log_return, excess_return}`, add returns-targeted baselines, propagate through the harness + DM gate. The Phase 1 backtester already operates in returns space; this would close the train/deploy contract gap.
+- **Wider experiment-tool surface** for the agent (`cross_validate`, `hp_search`, `regime_conditioned_backtest` as primitives the Theorist can compose).
+- **Refinement loop** -- explicit branch-from-failure prompts; semantic lineage edges (`refines`, `complements`, `abandoned`).
+- **Codegen invariants** -- per-method assertions written by the Theorist, executed in sandbox, surfaced as evidence in the gate.
+- **Cross-session aggregation** as a real promotion gate, not just a view: a finding gets a "robustness" tier based on how many independent sessions reproduce it under hardening.
+- **Regime detector walk-forward refit** -- closes the remaining honest-scope caveat in Phase 6B.
+- **Live-execution-aware backtester** (latency, slippage by liquidity, partial fills) and **multi-horizon / vol-targeting / Kelly** strategies on top of the existing engine.
 - **Stronger sandbox** for `spawn_method_code` (process isolation or WASM runtime).

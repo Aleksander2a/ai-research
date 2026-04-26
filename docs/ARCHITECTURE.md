@@ -146,21 +146,44 @@ embeddings.parquet  (timestamp, c0..c15)   contrastive embedding per window
 
 Window-aligned: each `kmeans.parquet` row's `regime_id` labels the timestamp at the end of a 60-day window.
 
-### `reports/signals/signal_ranking.parquet`
+### `reports/signals/`
 
 ```
-regime_id        int
-feature          string
-importance       float    base_acc - mean shuffled_acc, n_repeats=2
-importance_std   float
-n_samples        int
-rank             int      1 = most important within the regime
+signal_ranking.parquet              Single-fit per-regime ranking
+  regime_id        int
+  feature          string
+  importance       float    base_acc - mean shuffled_acc, n_repeats=2
+  importance_std   float
+  n_samples        int
+  rank             int      1 = most important within the regime
+
+walk_forward_ranking.parquet        Per-window per-regime ranking (Phase 6B)
+  window_idx       int
+  window_start     timestamp
+  window_end       timestamp
+  regime_id        int
+  feature          string
+  importance       float
+  importance_std   float
+  rank             int
+  n_samples        int
+
+signal_stability.parquet            Per-(regime, feature) summary
+  regime_id        int
+  feature          string
+  mean_importance  float
+  std_importance   float
+  mean_rank        float
+  rank_std         float
+  n_windows        int
+  topK_share       float    fraction of windows feature was rank<=K (default K=5)
+  stability        float    1 - (rank_std / max_rank), clipped to [0, 1]
 ```
 
 ### `reports/graph/`
 
 ```
-edges.parquet
+edges.parquet                       Global cross-asset graph (over full history)
   source        string   ticker
   target        string   ticker
   edge_type     string   "partial_corr" | "granger"
@@ -168,11 +191,22 @@ edges.parquet
   p_value       float64  (Granger only)
   best_lag      int      (Granger only)
 
-centrality.parquet
+centrality.parquet                  Global centrality
   node                       string
   degree_centrality          float64
   eigenvector_centrality     float64
   betweenness_centrality     float64
+
+per_regime/regime_<id>/edges.parquet         Same machinery within regime <id>
+per_regime/regime_<id>/centrality.parquet    Adds regime_id, n_samples columns
+
+per_regime/centrality_by_regime.parquet      Long-format union of all per-regime centrality
+per_regime/regime_sensitivity.parquet        Cross-regime dispersion per asset
+  node                                         string
+  degree_centrality_{mean,std,min,max}         float64
+  eigenvector_centrality_{mean,std,min,max}    float64
+  betweenness_centrality_{mean,std,min,max}    float64
+  betweenness_centrality_range                 float64   max - min  (= "regime sensitivity")
 ```
 
 ### `reports/agent/`
@@ -202,10 +236,20 @@ self_critique.jsonl     (finding_id, current_state, rationale, ts)
                         current_state ∈ {reinforced, unchanged,
                                           weakened, refuted}
 
+survival.jsonl          Phase-5 hardening output, one row per finding
+                        (finding_id, hypothesis, method, filters,
+                         original_p, original_skill, fdr_alpha, fdr_q,
+                         survives_fdr, adversarial: {full_test, placebo,
+                         block_holdout, survives_adversarial},
+                         survives_full_test, survives_placebo,
+                         survives_block_holdout, survives_all,
+                         evaluated_at)
+
 generated_methods/      <name>.py + <name>.json
                         Sandboxed code authored at runtime + metadata
 
 llm_cache/              content-hash-keyed plaintext (gitignored)
+embed_cache/            content-hash-keyed embedding vectors (Phase 3)
 ```
 
 ### `replay/agent_steps.jsonl`
@@ -241,7 +285,10 @@ Pulls from yfinance, normalizes to long format, persists parquet, defines walk-f
 | `metrics.py` | `mae`, `mape`, `directional_accuracy`, `skill_score`, `crps_from_quantiles` |
 | `harness.py` | `run_walk_forward(method_name, forecast_fn, ohlcv, windows)`, `ablation`, `summarize`, `add_skill_score` |
 | `significance.py` | `dm_test(loss_a, loss_b, horizon)` with Newey–West HAC variance; `block_bootstrap_ci`; `is_promotable` (DM + skill + bootstrap gate) |
-| `cli.py` | `autosignalx eval baseline` / `chronos` / `status` |
+| `fdr.py` | `benjamini_hochberg(p_values, alpha)` -- step-up FDR with monotone q-values; returns per-finding adjusted p-values + boolean survival mask |
+| `adversarial.py` | `replicate_full_test`, `replicate_placebo` (shuffled regime labels), `replicate_block_holdout` (50/50 by `forecast_origin`); `adversarial_replication` bundles all three with a `survives_adversarial` rollup |
+| `survival.py` | `harden_findings(findings_path, fdr_alpha)` -- joins FDR + adversarial into per-finding rows, persists `reports/agent/survival.jsonl`; `load_survival` reader |
+| `cli.py` | `autosignalx eval baseline` / `chronos` / `status` (hardening is exposed under `autosignalx agent harden`) |
 
 ### `forecast/`
 
@@ -274,7 +321,8 @@ ForecastFn = Callable[
 |---|---|
 | `features.py` | `compute_rsi(prices, window)`; `compute_macd_signal(prices, fast, slow, signal)`; `build_features_target(asset_ohlcv, macro_wide, horizon_days)` (8 technical + 8 macro features + binary direction target); `feature_columns(df)` |
 | `ranking.py` | `_permutation_importance(predict_fn, X, y, n_repeats, seed)` (one-feature-at-a-time shuffle); `rank_features_per_regime(features_df, regime_labels, feature_cols, ...)` (HistGradientBoostingClassifier per regime) |
-| `cli.py` | `autosignalx signal rank` / `status` |
+| `stability.py` | `walk_forward_rank(features_df, regime_labels, feature_cols, n_windows)` -- slides N windows, refits per-regime ranker inside each; `summarise_stability(walk_forward_df, top_k)` -- per-(regime, feature) stability metrics; `build_and_save(...)` orchestration |
+| `cli.py` | `autosignalx signal rank` / `stability` / `status` |
 
 ### `graph/`
 
@@ -283,8 +331,9 @@ ForecastFn = Callable[
 | `correlation.py` | `partial_correlation_edges(returns, threshold)` via `sklearn.covariance.GraphicalLassoCV(cv=3)` |
 | `causality.py` | `granger_edges(returns, max_lag, p_threshold)` via `statsmodels.tsa.stattools.grangercausalitytests`; takes min p across lags |
 | `centrality.py` | `compute_centrality(edges, node_set, directed)` via NetworkX (degree / eigenvector / betweenness) |
-| `build.py` | `build_and_save(p_threshold, max_lag, pcorr_threshold)` orchestration |
-| `cli.py` | `autosignalx graph build` / `status` |
+| `build.py` | `build_and_save(p_threshold, max_lag, pcorr_threshold)` -- global graph orchestration |
+| `per_regime.py` | `build_per_regime(...)` -- runs the same machinery within each regime's data subset; persists per-regime artifacts plus `regime_sensitivity.parquet` (cross-regime centrality dispersion); `load_per_regime`, `load_regime_sensitivity` readers |
+| `cli.py` | `autosignalx graph build` / `build-per-regime` / `status` |
 
 ### `agent/`
 

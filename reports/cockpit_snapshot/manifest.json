@@ -1,1 +1,1 @@
-{"pages": ["index.html", "forecasts.html", "regimes.html", "findings.html", "backtest.html", "agent.html", "chat.html"], "figures": 5, "n_corpus_chunks": 49}
+{"pages": ["index.html", "forecasts.html", "regimes.html", "regime_graph.html", "signal_stability.html", "findings.html", "survival.html", "backtest.html", "agent.html", "chat.html"], "figures": 5, "n_corpus_chunks": 52}

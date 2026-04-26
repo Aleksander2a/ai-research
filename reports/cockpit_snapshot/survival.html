@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoSignal-X — Backtest</title>
+<title>AutoSignal-X — Survival</title>
 <style>
 :root { color-scheme: light; }
 * { box-sizing: border-box; }
@@ -33,10 +33,39 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 </style>
 </head>
 <body>
-<nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="backtest.html" class="active">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a></nav>
+<nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="active">Survival</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a></nav>
 
 <div class="container">
-<p class='empty'>No backtest runs on disk. Run <code>autosignalx backtest run</code>.</p>
+<h1>Survival Analysis</h1><p class='caption'>Every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). A red X is a research insight, not a failure.</p><div class='card'><div class='metric'><div class='label'>Promoted</div><div class='value'>1</div></div><div class='metric'><div class='label'>Survive FDR</div><div class='value'>1/1</div></div><div class='metric'><div class='label'>Survive block-holdout</div><div class='value'>0/1</div></div><div class='metric'><div class='label'>Survive all attacks</div><div class='value'>0/1</div></div></div><div class='card'><strong>Zero of the promoted findings survive every attack.</strong> The hardening surfaced exactly which fragility each finding has -- the methodology is the artifact, not the count.</div><div class='card'><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>finding_id</th>
+      <th>method</th>
+      <th>filters</th>
+      <th>p_orig</th>
+      <th>q_FDR</th>
+      <th>FDR</th>
+      <th>full-test</th>
+      <th>placebo</th>
+      <th>block-holdout</th>
+      <th>all</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>f_9395cd1bd1be</td>
+      <td>chronos2_multivariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 3}</td>
+      <td>0.0398</td>
+      <td>0.0398</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+  </tbody>
+</table></div>
 </div>
 <div class="footer">
 Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>
