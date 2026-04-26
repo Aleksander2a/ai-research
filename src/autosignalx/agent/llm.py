@@ -96,10 +96,13 @@ class LiveProvider:
         ).hexdigest()[:24]
 
     def chat(self, messages: list[dict[str, str]], step: str, round: int) -> str:
+        from autosignalx.agent import telemetry as telemetry_mod
+
         key = self._cache_key(messages)
         cache_file = self.cache_dir / f"{key}.txt"
         if cache_file.exists():
             content = cache_file.read_text(encoding="utf-8")
+            # Cached -- no live call, no telemetry record
         else:
             from langchain_core.messages import HumanMessage, SystemMessage
 
@@ -110,9 +113,42 @@ class LiveProvider:
                     lc_messages.append(SystemMessage(content=m["content"]))
                 else:
                     lc_messages.append(HumanMessage(content=m["content"]))
-            response = self.client.invoke(lc_messages)
+            with telemetry_mod.CallTimer() as timer:
+                response = self.client.invoke(lc_messages)
             content = response.content if isinstance(response.content, str) else str(response.content)
             cache_file.write_text(content, encoding="utf-8")
+            # Mine token usage from response.response_metadata when available;
+            # fall back to a rough character-count estimate.
+            usage = (getattr(response, "response_metadata", {}) or {}).get(
+                "token_usage", {}
+            ) or (getattr(response, "usage_metadata", {}) or {})
+            prompt_tokens = int(
+                usage.get("prompt_tokens") or usage.get("input_tokens") or 0
+            )
+            completion_tokens = int(
+                usage.get("completion_tokens") or usage.get("output_tokens") or 0
+            )
+            if prompt_tokens == 0:
+                prompt_tokens = max(1, sum(len(m.get("content", "")) for m in messages) // 4)
+            if completion_tokens == 0:
+                completion_tokens = max(1, len(content) // 4)
+            try:
+                model_id = (
+                    self.client.model_name
+                    if hasattr(self.client, "model_name")
+                    else getattr(self.client, "model", "unknown")
+                )
+            except Exception:  # noqa: BLE001
+                model_id = "unknown"
+            telemetry_mod.record_call(
+                model=str(model_id),
+                role="unknown",  # role not threaded yet; future iter
+                step=step,
+                round_n=round,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=timer.elapsed_ms,
+            )
 
         if self.record_path is not None:
             self.record_path.parent.mkdir(parents=True, exist_ok=True)
@@ -167,22 +203,52 @@ def _fallback_response(step: str, round: int) -> str:
     return ""
 
 
-def get_provider(record_replay: bool = False) -> LLMProvider:
+ROLE_TO_ENV = {
+    "proposer": "DEEPINFRA_MODEL_PROPOSER",
+    "critic": "DEEPINFRA_MODEL_CRITIC",
+    "chat": "DEEPINFRA_MODEL_CHAT",
+    "theorist": "DEEPINFRA_MODEL_THEORIST",
+    "skeptic": "DEEPINFRA_MODEL_SKEPTIC",
+    "adjudicator": "DEEPINFRA_MODEL_ADJUDICATOR",
+}
+
+
+def _model_for_role(role: str) -> str:
+    """Resolve which DeepInfra model to use for a role.
+
+    Falls back through the env var hierarchy: role-specific env >
+    proposer/critic/chat default > a sensible global default."""
+    env_key = ROLE_TO_ENV.get(role, "DEEPINFRA_MODEL_PROPOSER")
+    explicit = os.environ.get(env_key, "").strip()
+    if explicit:
+        return explicit
+    if role in ("theorist", "proposer"):
+        return settings.deepinfra_model_proposer or "moonshotai/Kimi-K2.6"
+    if role in ("skeptic", "critic"):
+        return settings.deepinfra_model_critic or "zai-org/GLM-5.1"
+    if role in ("adjudicator", "chat"):
+        return settings.deepinfra_model_chat or "deepseek-ai/DeepSeek-V4-Pro"
+    return settings.deepinfra_model_proposer or "moonshotai/Kimi-K2.6"
+
+
+def get_provider(record_replay: bool = False, role: str = "proposer") -> LLMProvider:
     """Factory: live DeepInfra if a key is set and replay isn't forced;
     otherwise the deterministic replay provider.
+
+    The ``role`` parameter selects the model via env-var hierarchy
+    (DEEPINFRA_MODEL_<ROLE>), letting different agent roles use different
+    models -- e.g. a creative proposer model for the Theorist, a critical
+    one for the Skeptic, a decisive one for the Adjudicator.
 
     When ``record_replay`` is True and we end up live, every response is
     appended to ``replay/agent_steps.jsonl`` so a future no-key reviewer
     sees the same trace."""
     if settings.use_replay:
         return ReplayProvider()
-    model = settings.deepinfra_model_proposer or os.environ.get(
-        "DEEPINFRA_MODEL_DEFAULT", "openai/gpt-oss-120b"
-    )
     record_path = REPLAY_PATH if record_replay else None
     return LiveProvider(
         api_key=settings.deepinfra_api_key,
-        model=model,
+        model=_model_for_role(role),
         base_url=settings.deepinfra_base_url,
         record_path=record_path,
     )

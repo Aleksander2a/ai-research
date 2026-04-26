@@ -8,6 +8,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from autosignalx.agent import debate as debate_mod
 from autosignalx.agent import graph, ledger
 from autosignalx.config import settings
 
@@ -27,6 +28,11 @@ def run_cmd(
     record_replay: bool = typer.Option(
         False, help="Append live LLM responses to replay/agent_steps.jsonl."
     ),
+    mode: str = typer.Option(
+        "single",
+        help="'single' (one LLM does propose/critique/decide) or 'debate' "
+        "(Theorist/Skeptic/Adjudicator multi-role debate per round, Iter 12).",
+    ),
 ) -> None:
     """Run the agent's research loop for ``max_rounds`` rounds.
 
@@ -40,14 +46,19 @@ def run_cmd(
         ledger.clear()
         console.print("Ledger cleared.")
 
-    mode = "replay" if settings.use_replay else "live"
+    runtime_mode = "replay" if settings.use_replay else "live"
     console.print(
         f"Starting agent loop ({max_rounds} rounds, mode={mode}, "
-        f"record_replay={record_replay})..."
+        f"runtime={runtime_mode}, record_replay={record_replay})..."
     )
-    entries = graph.run(
-        max_rounds=max_rounds, seed=seed, record_replay=record_replay
-    )
+    if mode == "debate":
+        entries = debate_mod.run_debate(
+            max_rounds=max_rounds, seed=seed, record_replay=record_replay
+        )
+    else:
+        entries = graph.run(
+            max_rounds=max_rounds, seed=seed, record_replay=record_replay
+        )
     console.print(f"Agent finished. Ledger now has {len(entries)} entries.")
 
     table = Table(title="Agent ledger summary", header_style="bold")
@@ -61,6 +72,63 @@ def run_cmd(
         )
         table.add_row(str(e.get("round", "")), str(e.get("step", "")), c_str)
     console.print(table)
+
+
+@agent_app.command("consolidate")
+def consolidate_cmd(
+    session_id: str = typer.Option(
+        "current", help="Session ID for the lessons section header."
+    ),
+) -> None:
+    """Consolidate the current ledger + findings into a Markdown lessons
+    section, appended to reports/agent/lessons.md."""
+    from autosignalx.agent import memory as memory_mod
+
+    path, section = memory_mod.consolidate_and_append(session_id=session_id)
+    console.print(f"Wrote {len(section)} chars to {path}")
+    console.print(section[:600] + ("..." if len(section) > 600 else ""))
+
+
+@agent_app.command("score-traces")
+def score_traces_cmd(
+    session_id: str = typer.Option(
+        "current",
+        help="Session ID to score; 'current' = the entire current ledger.",
+    ),
+) -> None:
+    """Score every round of the current ledger via LLM-as-judge."""
+    from autosignalx.agent import trace_eval
+
+    entries = ledger.load()
+    if not entries:
+        console.print("Ledger is empty.")
+        return
+    console.print(
+        f"Scoring {max(int(e.get('round', 0)) for e in entries) + 1} rounds "
+        f"({len(entries)} ledger entries)..."
+    )
+    scores = trace_eval.score_session(entries, session_id=session_id)
+    for s in scores:
+        console.print(
+            f"  round {s['round']}: clarity={s.get('clarity')} "
+            f"novelty={s.get('novelty')} falsifiability={s.get('falsifiability')} "
+            f"evidence_citing={s.get('evidence_citing')}  --  {s.get('rationale', '')[:80]}"
+        )
+
+
+@agent_app.command("self-critique")
+def self_critique_cmd() -> None:
+    """Run self-critique over every promoted finding."""
+    from autosignalx.agent import self_critique as sc
+
+    findings = __import__("autosignalx.agent", fromlist=["findings"]).findings.load()
+    if not findings:
+        console.print("No promoted findings to critique.")
+        return
+    console.print(f"Self-critiquing {len(findings)} promoted findings...")
+    out = sc.critique_all_findings()
+    for r in out:
+        console.print(f"  {r['finding_id']}: {r['current_state']}  --  {r['rationale'][:80]}")
 
 
 @agent_app.command("status")

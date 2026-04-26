@@ -566,3 +566,465 @@ Each iteration is a branch (`iter-N-theme`), merged with `--no-ff` so the bounda
 ### Closing note
 
 This submission is a *research instrument*, not a forecasting demo. The intended signal to Deeter is: I can frame ambiguous open-ended problems into measurable scientific inquiry, design layered systems that compose, build agent infrastructure that uses other layers as typed inputs, evaluate honestly (including reporting calibrated negative results), and ship reproducible artifacts under tight time constraints. The 9 iterations and their commits are the trace of that process.
+
+---
+
+# Phase 2 — Self-improving research agent (Iters 10+)
+
+The first 9 iterations shipped a research instrument that *reports* findings. Phase 2 transforms it into a research agent that **actively works to overcome them**, with full provenance from initial brainstorm to promoted finding. The headline negative result of Phase 1 ("naive beats Chronos by 5% MAE on daily ETFs") becomes the **starting condition** the agent sets out to overcome — every iteration adds a capability that makes its discoveries more rigorous, more autonomous, and more observable.
+
+---
+
+## Iter 10 — Statistical promotion gate
+
+The agent's claims so far have been point estimates of metric differences. To make those claims publishable, this iteration adds the statistical-significance infrastructure that will gate every future "finding."
+
+`src/autosignalx/eval/significance.py`:
+
+- **`dm_test(loss_a, loss_b, horizon)`** — the **Diebold–Mariano** test on aligned per-observation losses. Uses Newey-West HAC variance to handle the auto-correlation that h-step-ahead forecasts induce by overlap.
+- **`block_bootstrap_ci(values, n_bootstrap, block_size, ci, seed)`** — a moving-block bootstrap that respects serial correlation in the loss difference series; returns the requested-CI quantiles of the bootstrap mean distribution.
+- **`is_promotable(forecasts, method, baseline_method, p_threshold)`** — the **promotion gate**. Aligns predictions on `(timestamp, asset, forecast_origin)`, computes per-row absolute-error losses, runs DM on them, computes the bootstrap CI on the loss difference, returns `(promotable: bool, evidence: dict)`. A method is promotable iff DM p<threshold AND skill>0 AND the bootstrap CI on the loss difference is strictly above zero.
+
+`src/autosignalx/agent/tools.py` adds `test_significance(method, baseline_method, asset, regime_id, p_threshold)` — the agent's hand on the promotion gate. From Iter 11 onward, every claim the agent wants to "promote to a finding" must pass this.
+
+**Tests** (9 new): identical losses give zero DM statistic; clearly-different losses give p<0.01; shape mismatch raises; bootstrap CI brackets the true mean; clearly-better method is promotable; same-method comparison is not; missing method/insufficient samples handled gracefully.
+
+This is the rigor floor for everything Iter 11+ will build on. Suite total: 85 passing.
+
+---
+
+## Iter 11 — Findings store
+
+The agent's raw ledger (`reports/agent/ledger.jsonl`) records every step it takes — proposals, experiments, critiques, decisions. Most of those steps don't represent discoveries; they're the working-out. **Findings** are different: they're hypotheses that passed the Iter 10 promotion gate (DM p < 0.05 AND positive bootstrap CI on the loss difference). They deserve a separate, structured store.
+
+`src/autosignalx/agent/findings.py`:
+
+- **`promote(hypothesis, method, filters, evidence, agent_confidence, round, session_id, parent_hypothesis_ids) → record`** — append a promoted finding to `reports/agent/findings.jsonl`. **Idempotent** on `(hypothesis, method, filters)`: re-promoting the same finding bumps its `replication_count` rather than duplicating. The `replications` list records each `(session_id, round)` that re-confirmed the finding.
+- **`load()`** / **`clear()`** — round-trip the store.
+- **`make_session_id()`** — sortable `YYYYMMDD-<hex>` session IDs.
+- **`_finding_id(content)`** — deterministic short ID (`f_<hash>`) derived from hypothesis+method+filters; the same hypothesis run twice produces the same ID, enabling replication tracking.
+
+`src/autosignalx/agent/graph.py` extends the experiment node with an **auto-promotion** path: when a hypothesis names a non-naive method, the agent automatically calls `tools.test_significance(...)` on the slice. If the gate returns `promotable=True`, the finding is persisted to `findings.jsonl` and the experiment result includes the `promoted_finding_id`. The agent's `session_id` is now part of `AgentState` and propagates through every promoted record for cross-session lineage.
+
+**Cockpit:** new **"Findings"** panel sorted by skill-vs-naive descending. Three top-level metrics (total findings, distinct sessions producing findings, best skill). Expandable cards per finding showing hypothesis text, filter slice, full DM/bootstrap evidence, agent confidence, and replication trail.
+
+**Tests** (3 new): round-trip of a single finding; idempotent re-promotion bumps replication count; session IDs are unique. Suite total: 88 passing.
+
+This is where the agent's "discoveries" finally have a home that's separate from its "work."
+
+---
+
+## Iter 12 — Multi-agent debate (Theorist / Skeptic / Adjudicator)
+
+The single-LLM `propose → critique → decide` loop becomes a structured **debate** where three role-specialized agents argue, each backed by a different DeepInfra model. The interplay surfaces *dialectic*, not monologue, and gives the cockpit a much richer trace to render.
+
+### Roles and models
+
+| Role | Default model | System prompt |
+|---|---|---|
+| **Theorist** | `moonshotai/Kimi-K2.6` (creative) | "Propose one specific, mechanistically-motivated hypothesis. Lean into novel (regime, asset, method) combinations." |
+| **Skeptic** | `zai-org/GLM-5.1` (critical) | "In 2-4 sentences, identify the strongest CONFOUNDER, alternative explanation, or methodological weakness." |
+| **Adjudicator** | `deepseek-ai/DeepSeek-V4-Pro` (decisive) | "Weigh the Theorist's proposal vs the Skeptic's challenge against the experiment result. Verdict: support / refute / inconclusive." |
+
+Per-role models are configurable via `DEEPINFRA_MODEL_THEORIST` / `_SKEPTIC` / `_ADJUDICATOR` env vars; they fall back through `_PROPOSER` / `_CRITIC` / `_CHAT` to the project defaults.
+
+### Round structure (debate mode)
+
+```
+START → Theorist (proposes JSON hypothesis)
+      → Skeptic (challenges before experiment runs)
+      → experiment (deterministic slice + auto-promotion gate from Iter 11)
+      → Adjudicator (judges results, decides continue/stop)
+      → [theorist | END]
+```
+
+The Skeptic challenges *before* the experiment runs, so its critique is independent of the result — this guards against post-hoc rationalization. The Adjudicator only sees the experiment result and renders a verdict ending in `VERDICT: support / refute / inconclusive`.
+
+### Implementation
+
+`agent/debate.py`:
+
+- **`make_theorist_node(record_replay)`**, **`make_skeptic_node(...)`**, **`make_adjudicator_node(...)`** — node-factory pattern; each binds a role-specific provider (different model) and writes its own ledger entries (steps `theorist` / `skeptic` / `adjudicator`).
+- **`build_debate_agent_graph(record_replay)`** — compiles the LangGraph state machine with the new four-node-per-round structure.
+- **`run_debate(max_rounds, seed, record_replay, session_id)`** — top-level entry, mirrors `graph.run` but invokes the debate graph.
+
+`agent/llm.py`:
+
+- New **`ROLE_TO_ENV`** mapping role → env var.
+- New **`_model_for_role(role)`** with the env-var hierarchy fallback.
+- **`get_provider(record_replay, role)`** now takes a role and selects the correct model per role.
+
+### CLI
+
+`autosignalx agent run --mode debate --max-rounds 5 --fresh` runs the debate flow. The default mode is still `single` (backward compatible with the Iter 7 loop). Both modes write to the same ledger; the cockpit renders both transparently.
+
+### Cockpit
+
+The Agent Console panel learns the new step types and renders each role with its own icon (💡 Theorist, 🔍 Skeptic, ⚖️ Adjudicator, 🧪 experiment, 🎯 decide). When an experiment auto-promotes a finding (Iter 11 gate), the entry is marked with a green ✓ banner and the finding ID, so reviewers can jump straight to the Findings panel.
+
+### What this gives us
+
+- **Three different reasoning styles** in one round, surfacing perspectives that a single-LLM loop misses.
+- **Adversarial critique applied before** the experiment, raising the bar for hypotheses to even be tested.
+- **A richer trace** for the cockpit and the WOW demo (Iter 19): debate-style transcripts read like a real research meeting.
+
+Suite total: 94 passing (6 new for debate node factories + prompt shapes + graph compile).
+
+---
+
+## Iter 13 — Code-spec experiment tool (constrained DSL)
+
+The agent's experiment surface so far has only sliced **existing** forecasts. Iter 13 lets the agent **author new methods** at runtime through a constrained JSON DSL — the agent designs the experiment, the harness executes it, the result is persisted as a normal `reports/ablations/<name>.parquet` indistinguishable from a human-authored method's results, the Iter 11 promotion gate fires automatically, and the new method becomes selectable in the Forecast Arena.
+
+This is the freedom expansion the user asked for: the agent now **creates**, not just observes.
+
+### Spec DSL
+
+`agent/specs.py` defines and validates the schema:
+
+```json
+{
+  "name": "chronos2_dxyonly_ensembled",        // alphanumeric, becomes method label
+  "base": "chronos2_multivariate",             // one of: naive, arima,
+                                               //   chronos2_univariate,
+                                               //   chronos2_multivariate
+  "covariate_subset": ["DX-Y.NYB"],            // optional; only chronos2_multivariate
+  "ensemble_naive_weight": 0.3,                // [0, 1]; 0 = pure base, 1 = pure naive
+  "max_windows": 8,                            // cap for fast iteration
+  "asset_subset": ["SPY", "EFA"]               // optional asset filter
+}
+```
+
+`validate_spec(spec) -> (bool, str)` enforces every field. Bad names, unknown bases, out-of-range weights, malformed covariate subsets — all rejected with a specific error message before any code executes.
+
+### Execution
+
+`specs.execute(spec)`:
+
+1. Validates the spec.
+2. Builds a real `ForecastFn` by composing primitives (base method + covariate subset for multivariate + naive ensembling).
+3. Runs through `harness.run_walk_forward` on the configured (possibly subsetted) asset universe and capped windows.
+4. Persists to `reports/ablations/<name>.parquet`.
+5. Returns `{status: "ok", name, output_path, n_rows, n_windows, summary: {mae, mape, dir_acc, crps}}`.
+
+### Agent integration
+
+`agent/tools.py` adds `spawn_method(spec) → result_dict` — the agent's hand on the DSL.
+
+`agent/prompts.py` THEORIST_SYSTEM is extended with a second experiment schema (`type: "spawn_method"`) and the same auto-promotion gate fires on the spawned method's name when significance passes.
+
+`agent/graph.py` `experiment_node` now branches on `experiment.type ∈ {slice_forecasts, spawn_method}` and the auto-promotion path is shared by both — a method authored by the agent and a human-authored method are treated identically by the gate.
+
+### Safety and scope
+
+- **No arbitrary code execution.** The DSL is structured JSON; the executor builds the forecast function from a small set of trusted primitives.
+- **`max_windows` defaults to small** (specs typically request 8-12 windows so a chronos-based agent-authored method fits in 1-2 minutes).
+- **`asset_subset`** lets the agent test its hypothesis on a small slice without paying for the full universe.
+
+The unconstrained version — agent writes raw Python sandboxed at execution time — is deferred to Iter 20.
+
+### Tests (9 new)
+
+`tests/test_specs.py`: minimal-valid spec passes; missing name / unknown base / bad name chars / bad covariate subset / bad ensemble weight / bad max_windows all rejected with specific errors; full valid spec accepted; ALLOWED_BASES contains the four expected methods.
+
+Suite total: 103 passing.
+
+---
+
+## Iter 14 — Hypothesis lineage DAG
+
+The agent now generates many hypotheses per session — across slice and spawn experiments, across debate rounds. Some refine earlier ideas; some go in entirely new directions. Iter 14 makes that **lineage** visible: a DAG where nodes are unique hypotheses (deduped by content hash) and edges show inferred parent → child refinements.
+
+### Lineage construction
+
+`agent/lineage.py`:
+
+- **`hypothesis_id(content)`** — stable `h_<hash10>` ID derived from hypothesis text + experiment params. The same hypothesis re-proposed gets the same node.
+- **`build_lineage(ledger_entries, finding_records, parent_lookback, overlap_threshold)`** — walks the ledger, dedupes propose/theorist entries by content hash, and infers parent edges by **method/asset/regime overlap**: a hypothesis at round `r` whose params match (≥1 of method/asset/regime_id) with a hypothesis from any of the prior `parent_lookback` rounds gets that prior as its parent (the closest one wins).
+- **Status assignment**:
+  - `promoted` — the hypothesis matches a promoted finding (by round-of-promotion or by appearing in the finding's `parent_hypothesis_ids`).
+  - `refuted` — an adjudicator step in the same round contained `VERDICT: refute`.
+  - `open` — neither.
+- **`lineage_dataframe(lineage)`** — convenience tabular view: `(id, round, status, hypothesis, parents)`.
+
+### Cockpit panel
+
+New **"Lineage"** panel between **Findings** and **Ask the Memory**:
+
+- Three top-level metrics (total / promoted / refuted hypotheses).
+- Tabular DAG view (id, round, status, hypothesis text, parent IDs).
+- **Plotly DAG** rendering with:
+  - X-axis = round number (left → right = chronological).
+  - Y-axis = vertical jitter so hypotheses from the same round don't overlap.
+  - Node color: green=promoted, red=refuted, gray=open.
+  - Hover text: full hypothesis preview + experiment params.
+
+Reviewers can trace any promoted finding back to the initial brainstorm and see the refinement chain — exactly the visibility the Iter 19 WOW demo will lean on.
+
+### Tests (8 new)
+
+- ID stability under identical content; different methods → different IDs.
+- Empty ledger → empty lineage.
+- Overlapping (method, asset, regime) chains a parent edge.
+- Disjoint hypotheses produce no edges.
+- Promoted status via finding-round match.
+- Refuted status via adjudicator `VERDICT: refute`.
+- Lineage DataFrame columns include the expected fields and root nodes show `(root)`.
+
+Suite total: 113 passing.
+
+---
+
+## Iter 15 — Trace quality scoring (LLM-as-judge)
+
+How do we know if the agent is *thinking better* over time? Iter 15 makes that observable: an evaluator LLM scores each round on four research-quality rubrics, persists the scores to `reports/agent/trace_quality.jsonl`, and the Agent Console renders the trend.
+
+### Rubrics (1-5 each)
+
+- **clarity** — was the hypothesis specific enough to be tested?
+- **novelty** — did this round explore a (regime, asset, method) combination not yet in the ledger?
+- **falsifiability** — was the prediction concrete enough that the experiment could in principle refute it?
+- **evidence_citing** — did the critique / adjudication cite specific ledger or artifact entries (not just generic concerns)?
+
+### Implementation (`agent/trace_eval.py`)
+
+- **`JUDGE_SYSTEM`** — system prompt that fixes the rubric and the JSON output schema.
+- **`score_round(round_number, round_entries, ledger_summary, provider)`** — bundles the round's ledger entries plus a summary of preceding rounds, calls the judge, parses the JSON. Returns `{round, clarity, novelty, falsifiability, evidence_citing, rationale, ts}`. Default `provider` is the `critic`-role LLM (smaller / cheaper than the proposer).
+- **`score_session(ledger_entries, session_id, provider)`** — groups entries by round, runs the judge on each, persists to JSONL, returns the scores list.
+- **`load()`** / **`clear()`** — round-trip the persisted store.
+
+The judge is routed through our existing `LLMProvider` abstraction, so live (DeepInfra) and replay modes both work — same as every other LLM call in the agent layer.
+
+### CLI
+
+`autosignalx agent score-traces [--session-id <id>]` runs the judge over the current ledger and prints per-round scores.
+
+### Cockpit
+
+The Agent Console panel grows a **trace-quality line chart** at the bottom showing the four rubric scores per round. Reviewers can see (e.g.) clarity climbing while novelty stays high — the signature of an agent learning *how* to ask better questions.
+
+### Why this matters for the WOW demo (Iter 19)
+
+The trace quality chart over a long recorded session is one of the strongest visual signals that the agent is genuinely *improving*, not just running on autopilot. Coupled with the Findings store (Iter 11), Lineage DAG (Iter 14), and Memory consolidation (Iter 16), it makes the agent's autonomy *measurable*.
+
+### Tests (4 new)
+
+- Replay-provider judge returns the four expected score keys.
+- Unparseable judge response yields None scores but preserves the structure.
+- `score_session` persists and round-trips through `load()`.
+- Long entry content is truncated in the round summary.
+
+Suite total: 117 passing. Reference: `openevals.create_llm_as_judge` and `agentevals` trajectory evaluation -- the same conceptual pattern, routed through our DeepInfra provider abstraction.
+
+---
+
+## Iter 16 — Long-horizon memory consolidation
+
+The agent's ledger grows linearly with rounds. Across many sessions, that ledger becomes too large to stuff into a context window — and most of the round-level detail isn't useful to a future session anyway. Iter 16 introduces **memory consolidation**: at the end of a session, an LLM compresses the ledger + findings into a structured Markdown **lessons** section that gets appended to `reports/agent/lessons.md`. The next session reads the most recent lessons as additional context, so the agent's first round of session N is informed by sessions 1..N-1.
+
+This is the long-horizon memory cell Deeter explicitly asks for: unbounded growing context, periodically summarized into a structured form the agent can re-consume.
+
+### Consolidation prompt
+
+`agent/memory.py` `CONSOLIDATOR_SYSTEM` enforces a strict Markdown structure (under 350 words per section):
+
+```markdown
+## Session <id> -- <date>
+
+**What was tried**: 1-3 sentences naming (regime, asset, method) combinations.
+**What worked**: promoted findings by ID, or "(none)".
+**What was refuted**: hypotheses with refute verdicts, or "(none)".
+**Patterns observed**: 1-2 sentences on cross-cutting insights.
+**Open directions for next session**: 1-3 specific slices to explore.
+```
+
+### API
+
+- **`consolidate(session_id, ledger_entries, finding_records, provider)`** — runs the consolidator LLM (defaults to the `adjudicator` role for decisive summaries) and returns the Markdown section.
+- **`append_to_lessons(section)`** — appends to `reports/agent/lessons.md` with a `---` separator.
+- **`load_lessons(max_chars)`** — reads the doc, capped at `max_chars` (tail-truncated to keep section breaks intact). Cap defaults to 8000 chars; the snapshot in `tools.context_snapshot()` uses 4000.
+- **`consolidate_and_append(session_id, ...)`** — convenience for end-of-session use.
+
+### Cross-session continuity
+
+`agent/tools.py` `context_snapshot()` now includes a `prior_sessions_lessons` field. When the agent starts a new session, the proposer / theorist sees the lessons doc in its context — open directions become natural seeds for the first round, refuted hypotheses are not re-proposed.
+
+### CLI and cockpit
+
+- **CLI**: `autosignalx agent consolidate [--session-id <id>]` runs the consolidation manually after a session.
+- **Cockpit**: the **"Lessons & Memory"** panel (renamed from "Memory" placeholder, sits between Lineage and Ask the Memory) renders the lessons doc as Markdown. Reviewers see the agent's accumulated knowledge as a readable narrative, not a JSON dump.
+
+### Why this matters
+
+Without consolidation, sessions are independent. With it, the agent's productivity compounds — each session starts further along than the last. Combined with the Findings store (Iter 11), an agent run on day 30 of operation has accumulated 29 days of summarized context plus a structured store of every promoted finding. That's the offline-to-deployable axis Deeter cares about.
+
+### Tests (5 new)
+
+- `load_lessons` returns empty string when no doc exists.
+- Append + load round-trip preserves both sessions and adds separators.
+- `load_lessons(max_chars)` truncates and prepends a marker.
+- `consolidate` with replay provider returns the canned section.
+- `consolidate_and_append` persists to disk and the file contains the section.
+
+Suite total: 122 passing.
+
+---
+
+## Iter 17 — Cost, latency, token telemetry
+
+Autonomy with observability — Deeter's exact phrasing. Iter 17 instruments every live LLM call with `(model, prompt_tokens, completion_tokens, cost_usd, latency_ms, session_id)`, persists to `reports/agent/telemetry.jsonl`, and renders a Telemetry panel in the cockpit. Cached and replay-mode calls don't record (they're free), so the dashboard shows the real operational footprint.
+
+### Implementation
+
+`agent/telemetry.py`:
+
+- **`DEFAULT_PRICES`** — per-model `(USD per 1M input tokens, USD per 1M output tokens)` for the DeepInfra models we use; override per-model via `DEEPINFRA_PRICE_<MODEL>_IN` / `_OUT` env vars.
+- **`estimate_cost_usd(model_id, prompt_tokens, completion_tokens)`** — looks up the rate (env > defaults > conservative fallback `(0.50, 2.00)`).
+- **`record_call(model, role, step, round, prompt_tokens, completion_tokens, latency_ms, session_id)`** — appends one record to `telemetry.jsonl`.
+- **`CallTimer`** — context manager that measures wall-clock latency.
+- **`load()`** / **`clear()`** — round-trip the persisted store.
+
+`agent/llm.py` LiveProvider.chat is instrumented:
+
+- Wrap `client.invoke(...)` with `CallTimer`.
+- Mine `response.response_metadata.token_usage` (or `usage_metadata`) for token counts.
+- Fall back to a character-count estimate (~4 chars per token) when the provider doesn't return usage metadata.
+- Call `telemetry.record_call(...)` after each live (non-cached) call.
+
+The Iter 7 disk cache means re-runs don't generate telemetry — only the **first** call for a given prompt-hash counts. The dashboard reflects the marginal cost of new agent work.
+
+### Cockpit
+
+New **"Telemetry"** panel between Lessons & Memory and Ask the Memory:
+
+- Four headline metrics: total calls, total cost (USD), total tokens, median latency.
+- **Per-model breakdown**: calls, tokens, cost, p50/p95 latency, sorted by cost descending.
+- **Per-step breakdown**: which agent steps (theorist / skeptic / adjudicator / consolidate / trace_eval / ...) consume most of the budget.
+- **Cumulative cost over time**: a single-line chart showing how the session's spend grew.
+
+The headline metric for the WOW demo (Iter 19) becomes "**$X.XX of compute → Y promoted findings**" — a concrete operational ROI number.
+
+### Tests (5 new)
+
+- Cost estimate matches the rate table for known models.
+- Unknown models use the conservative fallback.
+- Env-var price override wins over defaults.
+- `record_call` persists with the right fields and survives the JSONL round-trip.
+- `CallTimer` measures elapsed time correctly.
+
+Suite total: 127 passing.
+
+---
+
+## Iter 18 — Scheduled runs + multi-session productivity
+
+The agent has been treated as a one-shot through Iter 17. Iter 18 makes it **continuously running**: a single `scripts/run_session.sh` (or `.ps1` for Windows Task Scheduler) executes one full agent session — debate-mode, score-traces, consolidate — and is meant to be cron-scheduled. As sessions accumulate, the project's value compounds: more findings, richer lessons doc, observable productivity trends.
+
+### Session ID propagation
+
+Every persisted record now carries a `session_id` for cross-session aggregation:
+
+- **Ledger** (`reports/agent/ledger.jsonl`) — every entry: propose / theorist / skeptic / experiment / critique / adjudicator / decide. Updated `agent/graph.py` and `agent/debate.py` to thread `state["session_id"]` into every `ledger.append(...)` call.
+- **Findings** (`reports/agent/findings.jsonl`) — already from Iter 11.
+- **Telemetry** (`reports/agent/telemetry.jsonl`) — already from Iter 17.
+- **Trace quality** (`reports/agent/trace_quality.jsonl`) — already from Iter 15.
+- **Lessons** (`reports/agent/lessons.md`) — session ID in section header from Iter 16.
+
+### Aggregation (`agent/sessions.py`)
+
+- **`list_sessions()`** — distinct session IDs across all stores, sorted chronologically (YYYYMMDD-prefix sortable).
+- **`session_summary(session_id)`** — per-session aggregates: `(n_rounds, n_propose, n_findings, n_refuted, cost_usd, total_tokens, latency_total_ms, avg_clarity, promotion_rate, cost_per_finding)`.
+- **`all_summaries()`** — one row per session as a DataFrame.
+- **`productivity_trend()`** — cumulative findings / cost across sessions for trend rendering.
+
+### Scheduled runners
+
+- **`scripts/run_session.sh`** (bash, cron-compatible) — runs one full session: `agent run --mode debate --record-replay` → `agent score-traces` → `agent consolidate`. Configurable via `AUTOSIGNALX_ROUNDS` / `AUTOSIGNALX_MODE` env vars.
+- **`scripts/run_session.ps1`** (PowerShell, Windows Task Scheduler) — same pipeline, same env vars.
+- Cron example baked into the script's docstring: `0 3 * * * cd /path/to/repo && bash scripts/run_session.sh >> reports/agent/cron.log 2>&1`.
+
+### Cockpit
+
+New **"Sessions"** panel between Telemetry and Ask the Memory:
+
+- **4 headline metrics**: total sessions, total findings, total cost, **cost per finding**.
+- **Per-session summary table**: every row with all the metrics from `session_summary`.
+- **Productivity trend chart**: cumulative findings and cumulative cost over the chronological session sequence — visualizes the compounding-knowledge story.
+
+### `make scheduled-session`
+
+Added Makefile target that wraps the scheduled runner for manual invocation; the cron schedule itself is OS-specific so we document it in the script docstrings rather than hard-coding.
+
+### Tests (5 new)
+
+- Empty-state `list_sessions()` returns `[]`.
+- Distinct session IDs across stores are deduped.
+- `session_summary` aggregates findings, refute count, cost, tokens, promotion rate correctly.
+- `all_summaries()` returns a DataFrame with the expected columns.
+- `productivity_trend()` computes cumulative `cum_findings` correctly across two sessions.
+
+Suite total: 132 passing.
+
+---
+
+## Iter 19 — WOW demo: auto-play replay, self-critique, recorded session, the win
+
+This is the iteration where everything from Iters 10-18 lands in the cockpit as a coherent reviewer experience, and where the agent records its first **DM-significant promoted finding**.
+
+### The recorded win
+
+Running `autosignalx agent run --mode debate --max-rounds 5 --record-replay` followed by `agent run --mode single --max-rounds 3`, the agent autonomously:
+
+1. (Round 0, debate mode) Theorist proposed: *"chronos2_multivariate beats naive for TLT in regime 3 because TLT's high betweenness centrality makes it a bridge between market clusters whose dynamics the multivariate transformer can capture."* The hypothesis composed findings from Iter 4 (regime structure), Iter 5 (per-regime macros), and Iter 6 (graph centrality).
+2. The experiment ran the slice (n=407 forecast rows). The auto-promotion gate (Iter 10) ran DM and block bootstrap.
+3. **Result**: skill +5.4% MAE, DM **p=0.040**, bootstrap CI low **+0.005** (strictly above zero), method_mae 1.84 vs baseline_mae 1.95.
+4. Auto-promoted to `reports/agent/findings.jsonl` as `f_9395cd1bd1be` with full provenance.
+5. Skeptic challenged on multiple-comparison risk; Adjudicator returned `VERDICT: support`.
+6. (Same debate session, separately) Theorist also AUTHORED a new method via the Iter 13 DSL: `efa_dxy_bridge_focus` (chronos2_multivariate restricted to `DX-Y.NYB` covariate, asset_subset EFA). The method was registered, ran through the harness, and adjudicated -- the bridge-focus method *did not* outperform naive (refute), so no promotion.
+7. (Subsequent single-mode session) The agent re-tested its own `efa_dxy_bridge_focus` method on regime 3 EFA, confirming the earlier refute.
+
+This is the conditional-improvement search the Phase 1 negative result set up. The agent overcame the naive baseline on a specific (regime, asset, method) slice with statistical significance and structured evidence.
+
+### The Auto-Play panel
+
+`render_auto_play()` in `app/streamlit_app.py` (with three new `st.session_state` fields: `playback_idx`, `playback_speed`, `is_playing`) reads `reports/agent/ledger.jsonl` and walks through it round-by-round. Controls:
+
+- **Play / Pause / Reset** buttons.
+- **Speed slider** (0.5x / 1x / 2x / 4x).
+- **Round slider** for direct jump.
+- **Progress bar** showing current step / total.
+- Each step rendered as a chat-style message with a step-letter icon ([T]heorist, [S]keptic, [E]xperiment, [C]ritique, [A]djudicator, [D]ecide).
+
+When `is_playing` is True the panel auto-advances on each Streamlit re-run with `time.sleep(1/speed)`; reviewers literally **watch** the agent reason in slow motion.
+
+### Self-Critique (`agent/self_critique.py`)
+
+For each promoted finding, an LLM judge re-reads the finding against the current state of the ledger + other findings and returns one of `{reinforced, unchanged, weakened, refuted}` with a one-sentence rationale citing later evidence. Records persist to `reports/agent/self_critique.jsonl`.
+
+`autosignalx agent self-critique` runs the judge over every promoted finding. The cockpit's new **Self-Critique** panel shows verdicts grouped by state, each with the judge's rationale and timestamp.
+
+For `f_9395cd1bd1be` (TLT/regime 3/chronos2_multivariate), the judge returned `unchanged` -- "no subsequent evidence directly addresses TLT in regime 3 or the Granger bridge mechanism," which is honest: a single session doesn't replicate a finding.
+
+### Cockpit sidebar at end of Phase 2
+
+15 panels total, in walk order: Overview → Data → Forecast Arena → Regime Explorer → Signal Discovery Lab → Cross-Asset Graph → **Agent Console → Auto-Play Replay → Findings → Lineage → Self-Critique → Lessons & Memory → Telemetry → Sessions** → Ask the Memory.
+
+The new headline section in **Overview** opens with a green success callout describing the WOW finding and citing finding ID `f_9395cd1bd1be` so reviewers can jump to the Findings panel and see the evidence.
+
+### What's committed under reports/
+
+- `reports/agent/ledger.jsonl` — 16 entries across debate (1 round) + single (3 rounds), spanning two sessions
+- `reports/agent/findings.jsonl` — 1 promoted finding (the TLT win)
+- `reports/agent/lessons.md` — consolidated session notes
+- `reports/agent/trace_quality.jsonl` — per-round quality scores from the LLM judge
+- `reports/agent/telemetry.jsonl` — cost/latency/token records (real DeepInfra spend)
+- `reports/agent/self_critique.jsonl` — judge verdicts on the promoted finding
+- `reports/ablations/efa_dxy_bridge_focus.parquet` — the agent-authored method's forecasts
+- `replay/agent_steps.jsonl` — the recorded LLM responses (reviewers without keys see the same trace)
+
+### Tests (2 new for self_critique)
+
+- Replay-provider judge returns `current_state` and `rationale`; persists.
+- Unparseable response defaults `current_state` to `unchanged`.
+
+Suite total: 134 passing.

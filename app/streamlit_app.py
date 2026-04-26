@@ -60,19 +60,32 @@ def render_overview() -> None:
 
     st.divider()
     st.subheader("Headline findings")
+    st.success(
+        "**Phase 2 WOW**: the agent autonomously discovered a DM-significant "
+        "lift over naive. Hypothesis (round 0, debate mode): *chronos2_multivariate "
+        "for TLT in regime 3 outperforms naive because TLT's high betweenness "
+        "centrality makes it a bridge between market clusters that the multivariate "
+        "transformer can capture.* **Verdict: skill +5.4% MAE, DM p=0.040, bootstrap "
+        "CI strictly above zero.** Auto-promoted to the Findings panel."
+    )
     st.markdown(
         """
         - **Iter 3 (negative result, calibrated)**: Chronos-2 underperforms naive on
-          daily ETFs by 5-6% MAE; 80% intervals well-calibrated (CRPS ≈ 2.9). Macro
-          covariates do not help unconditionally.
+          daily ETFs by 5-6% MAE *unconditionally*; 80% intervals well-calibrated
+          (CRPS ≈ 2.9). The Phase 2 finding above shows this is regime-specific,
+          not universal.
         - **Iter 5 (signals)**: Macros dominate every regime's top-5 features for
           direction prediction, but the **dominant macro depends on the regime**
           (TNX in Regime 0, DXY in Regimes 1+3, CL=F in Regime 2).
         - **Iter 6 (graph)**: SPY is the structural hub (eigenvector 0.532); GLD is
           statistically isolated; TLT is the bridge (highest betweenness 0.429).
-        - **Iter 7 (agent)**: by Round 4 the live agent composes findings from
-          every prior layer into a single mechanistic, falsifiable hypothesis --
-          the conditional-improvement search opened by Iter 3's negative result.
+          The agent reasoned about TLT's bridge role to construct its winning hypothesis.
+        - **Iter 12 (debate)**: Theorist (Kimi K2.6) / Skeptic (GLM-5.1) /
+          Adjudicator (DeepSeek V4-Pro) -- three voices per round, each persisted
+          in the ledger and rendered in the cockpit.
+        - **Iter 13 (DSL)**: in the same debate session the agent also AUTHORED a
+          new method (`efa_dxy_bridge_focus`) via the constrained code-spec DSL,
+          ran it through the walk-forward harness, adjudicated the result.
         """
     )
 
@@ -531,31 +544,44 @@ def render_agent_console() -> None:
 
     st.divider()
     st.subheader("Trace timeline")
+    role_icon = {
+        "propose": "🧠",
+        "theorist": "💡",
+        "skeptic": "🔍",
+        "experiment": "🧪",
+        "critique": "📝",
+        "adjudicator": "⚖️",
+        "decide": "🎯",
+    }
     for e in entries:
         rd = e.get("round", "?")
         step = e.get("step", "?")
         ts = e.get("ts", "")
         content = e.get("content", "")
-        if step == "propose":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- propose**  *(at {ts})*")
+        icon = role_icon.get(step, "•")
+        is_user_role = step == "experiment"
+        chat_role = "user" if is_user_role else "assistant"
+        with st.chat_message(chat_role):
+            st.markdown(f"{icon} **round {rd} -- {step}**  *({ts})*")
+            if step in ("propose", "theorist"):
                 if isinstance(content, dict):
                     st.markdown(f"_Hypothesis_: {content.get('hypothesis', '')}")
                     exp = content.get("experiment", {})
                     if exp:
                         st.code(json.dumps(exp, indent=2), language="json")
-        elif step == "experiment":
-            with st.chat_message("user"):
-                st.markdown(f"**round {rd} -- experiment result**")
+            elif step == "experiment":
                 st.json(content)
-        elif step == "critique":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- critique**")
+                if isinstance(content, dict) and content.get("promoted_finding_id"):
+                    st.success(f"✓ Promoted finding: `{content['promoted_finding_id']}`")
+            elif step in ("critique", "skeptic", "adjudicator"):
                 st.markdown(content if isinstance(content, str) else str(content))
-        elif step == "decide":
-            with st.chat_message("assistant"):
-                st.markdown(f"**round {rd} -- decide**")
+            elif step == "decide":
                 st.json(content)
+            else:
+                st.write(content)
+
+    st.divider()
+    render_trace_quality_chart()
 
 
 def render_ask_the_memory() -> None:
@@ -637,6 +663,438 @@ def render_ask_the_memory() -> None:
     st.rerun()
 
 
+def render_trace_quality_chart() -> None:
+    """Sub-renderer used by Agent Console to show quality trends per session."""
+    from autosignalx.agent import trace_eval
+
+    rows = trace_eval.load()
+    if not rows:
+        return
+    st.subheader("Trace quality over rounds (LLM-as-judge, 1-5)")
+    df = pd.DataFrame(rows)
+    df = df[["round", "clarity", "novelty", "falsifiability", "evidence_citing"]].copy()
+    df = df.set_index("round")
+    st.line_chart(df, height=250)
+    st.caption(
+        "Higher = better. Run `autosignalx agent score-traces` after each "
+        "session to refresh."
+    )
+
+
+def render_auto_play() -> None:
+    st.title("Auto-Play Replay")
+    st.caption(
+        "Press play to watch the agent's recorded research session unfold "
+        "round by round. The trace is read from `reports/agent/ledger.jsonl` "
+        "(or the committed replay) -- live and replay sessions both render here."
+    )
+
+    from autosignalx.agent import ledger as ledger_mod
+
+    entries = ledger_mod.load()
+    if not entries:
+        st.info("No ledger entries yet. Run `make agent` to record a session.")
+        return
+
+    if "playback_idx" not in st.session_state:
+        st.session_state.playback_idx = 0
+    if "playback_speed" not in st.session_state:
+        st.session_state.playback_speed = 1.0
+    if "is_playing" not in st.session_state:
+        st.session_state.is_playing = False
+
+    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
+    with col1:
+        if st.button("Play"):
+            st.session_state.is_playing = True
+    with col2:
+        if st.button("Pause"):
+            st.session_state.is_playing = False
+    with col3:
+        if st.button("Reset"):
+            st.session_state.playback_idx = 0
+            st.session_state.is_playing = False
+    with col4:
+        st.session_state.playback_speed = st.select_slider(
+            "Speed",
+            options=[0.5, 1.0, 2.0, 4.0],
+            value=st.session_state.playback_speed,
+            label_visibility="collapsed",
+        )
+
+    st.session_state.playback_idx = st.slider(
+        "Round",
+        min_value=0,
+        max_value=len(entries),
+        value=st.session_state.playback_idx,
+    )
+    progress = st.session_state.playback_idx / max(1, len(entries))
+    st.progress(progress, text=f"Step {st.session_state.playback_idx} / {len(entries)}")
+
+    visible = entries[: st.session_state.playback_idx]
+    role_icon = {
+        "propose": "P",
+        "theorist": "T",
+        "skeptic": "S",
+        "experiment": "E",
+        "critique": "C",
+        "adjudicator": "A",
+        "decide": "D",
+    }
+    for e in visible:
+        rd = e.get("round", "?")
+        step = e.get("step", "?")
+        content = e.get("content", "")
+        with st.chat_message("user" if step == "experiment" else "assistant"):
+            st.markdown(f"**[{role_icon.get(step, '*')}] round {rd} -- {step}**")
+            if isinstance(content, dict):
+                if step in ("propose", "theorist"):
+                    st.markdown(f"_Hypothesis_: {content.get('hypothesis', '')}")
+                else:
+                    st.json(content)
+            else:
+                st.markdown(str(content)[:800])
+
+    if st.session_state.is_playing and st.session_state.playback_idx < len(entries):
+        import time
+
+        time.sleep(max(0.2, 1.0 / st.session_state.playback_speed))
+        st.session_state.playback_idx += 1
+        st.rerun()
+
+
+def render_self_critique() -> None:
+    st.title("Self-Critique")
+    st.caption(
+        "The agent re-reads its own promoted findings against the current "
+        "state of the ledger and other findings. Verdicts: reinforced "
+        "(later evidence supports), unchanged, weakened (some doubt), "
+        "refuted (later evidence contradicts)."
+    )
+
+    from autosignalx.agent import self_critique as sc
+
+    rows = sc.load()
+    if not rows:
+        st.info(
+            "No self-critiques yet. Run `autosignalx agent self-critique` "
+            "after enough findings have accumulated."
+        )
+        return
+
+    state_counts = pd.Series([r.get("current_state", "unknown") for r in rows]).value_counts()
+    cols = st.columns(min(4, len(state_counts) + 1))
+    cols[0].metric("Total critiques", len(rows))
+    for i, (state, cnt) in enumerate(state_counts.items(), start=1):
+        if i < len(cols):
+            cols[i].metric(state.capitalize(), int(cnt))
+
+    st.divider()
+    state_emoji = {"reinforced": "++", "unchanged": "==", "weakened": "--", "refuted": "XX"}
+    for r in rows[::-1]:  # most recent first
+        st.markdown(
+            f"**[{state_emoji.get(r.get('current_state', ''), '?')}] "
+            f"{r.get('finding_id', '?')}**  -  *{r.get('current_state', '?')}*"
+        )
+        st.markdown(f"_{r.get('rationale', '')}_")
+        st.caption(f"recorded {r.get('ts', '')}")
+        st.divider()
+
+
+def render_sessions() -> None:
+    st.title("Sessions")
+    st.caption(
+        "Multi-session view. Each row aggregates ledger, findings, "
+        "telemetry, and trace-quality records by session_id. Sorted "
+        "chronologically (session IDs are YYYYMMDD-prefixed)."
+    )
+
+    from autosignalx.agent import sessions as sessions_mod
+
+    df = sessions_mod.all_summaries()
+    if df.empty:
+        st.info(
+            "No sessions yet. Run `make agent` (or schedule daily runs via "
+            "`scripts/run_session.sh`) to populate."
+        )
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("Sessions", len(df))
+    cols[1].metric("Total findings", int(df["n_findings"].sum()))
+    cols[2].metric("Total cost (USD)", f"${df['cost_usd'].sum():.4f}")
+    finds = df["n_findings"].sum()
+    cost = df["cost_usd"].sum()
+    cols[3].metric("Cost per finding", f"${cost / finds:.4f}" if finds > 0 else "n/a")
+
+    st.divider()
+    st.subheader("Per-session summary")
+    st.dataframe(
+        df.style.format(
+            {
+                "cost_usd": "${:.4f}",
+                "total_tokens": "{:,}",
+                "latency_total_ms": "{:,.0f}",
+                "promotion_rate": "{:.1%}",
+                "cost_per_finding": "${:.4f}",
+                "avg_clarity": "{:.2f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Productivity trend (cumulative)")
+    trend = sessions_mod.productivity_trend()
+    if not trend.empty:
+        chart_df = trend[["session_id", "cum_findings", "cum_cost_usd"]].set_index("session_id")
+        st.line_chart(chart_df, height=260)
+
+
+def render_telemetry() -> None:
+    st.title("Telemetry")
+    st.caption(
+        "Cost / latency / token usage for live LLM calls. "
+        "Cached and replay-mode calls don't generate records. "
+        "Cost is estimated from a per-model price table (override via "
+        "`DEEPINFRA_PRICE_<MODEL>_IN/_OUT` env vars)."
+    )
+
+    from autosignalx.agent import telemetry as telemetry_mod
+
+    rows = telemetry_mod.load()
+    if not rows:
+        st.info(
+            "No telemetry records yet. Live LLM calls (non-cached, "
+            "non-replay) automatically record to "
+            "`reports/agent/telemetry.jsonl`."
+        )
+        return
+
+    df = pd.DataFrame(rows)
+    cols = st.columns(4)
+    cols[0].metric("Total calls", f"{len(df):,}")
+    cols[1].metric("Total cost (USD)", f"${df['cost_usd'].sum():.4f}")
+    cols[2].metric("Total tokens", f"{int(df['total_tokens'].sum()):,}")
+    cols[3].metric("Median latency (ms)", f"{int(df['latency_ms'].median()):,}")
+
+    st.divider()
+    st.subheader("Per-model breakdown")
+    by_model = (
+        df.groupby("model")
+        .agg(
+            calls=("model", "count"),
+            tokens=("total_tokens", "sum"),
+            cost=("cost_usd", "sum"),
+            latency_p50=("latency_ms", "median"),
+            latency_p95=("latency_ms", lambda s: s.quantile(0.95)),
+        )
+        .sort_values("cost", ascending=False)
+    )
+    st.dataframe(
+        by_model.style.format(
+            {
+                "tokens": "{:,}",
+                "cost": "${:.4f}",
+                "latency_p50": "{:,.0f}",
+                "latency_p95": "{:,.0f}",
+            }
+        ),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Per-step breakdown")
+    by_step = (
+        df.groupby("step")
+        .agg(
+            calls=("step", "count"),
+            tokens=("total_tokens", "sum"),
+            cost=("cost_usd", "sum"),
+        )
+        .sort_values("cost", ascending=False)
+    )
+    st.dataframe(
+        by_step.style.format({"tokens": "{:,}", "cost": "${:.4f}"}),
+        use_container_width=True,
+    )
+
+    st.divider()
+    st.subheader("Cost per round (cumulative)")
+    df_sorted = df.sort_values("ts").reset_index(drop=True)
+    df_sorted["cum_cost"] = df_sorted["cost_usd"].cumsum()
+    st.line_chart(df_sorted[["cum_cost"]], height=250)
+
+
+def render_lessons() -> None:
+    st.title("Lessons & Memory")
+    st.caption(
+        "The long-horizon memory cell. After each session, the agent "
+        "consolidates the ledger + promoted findings into a Markdown "
+        "'lessons' section that the next session reads as context. "
+        "(Run `autosignalx agent consolidate` to update.)"
+    )
+
+    from autosignalx.agent import memory as memory_mod
+
+    text = memory_mod.load_lessons(max_chars=20000)
+    if not text:
+        st.info(
+            "No lessons recorded yet. After a session, run "
+            "`autosignalx agent consolidate` to summarize and persist."
+        )
+        return
+    st.markdown(text)
+
+
+def render_findings() -> None:
+    st.title("Findings")
+    st.caption(
+        "Promoted findings -- hypotheses that passed the statistical "
+        "promotion gate (Diebold-Mariano p < 0.05 AND positive bootstrap CI). "
+        "Each card carries the full evidence trail."
+    )
+
+    from autosignalx.agent import findings as findings_mod
+
+    rows = findings_mod.load()
+    if not rows:
+        st.info(
+            "No promoted findings yet. Run the agent (`make agent`); it "
+            "automatically attempts to promote each experiment that names "
+            "a non-naive method."
+        )
+        return
+
+    rows_sorted = sorted(
+        rows,
+        key=lambda r: r.get("evidence", {}).get("skill_vs_baseline", -1.0),
+        reverse=True,
+    )
+    cols = st.columns(3)
+    cols[0].metric("Total findings", len(rows_sorted))
+    cols[1].metric("Sessions producing findings", len({r.get("session_id") for r in rows_sorted}))
+    cols[2].metric("Best skill vs naive", f"{rows_sorted[0].get('evidence', {}).get('skill_vs_baseline', 0.0):+.3f}")
+
+    st.divider()
+    for r in rows_sorted:
+        ev = r.get("evidence", {})
+        with st.expander(
+            f"{r.get('id', '?')}  -  skill +{ev.get('skill_vs_baseline', 0):.3f}  "
+            f"(p={ev.get('p_value', float('nan')):.4f}, "
+            f"replications={r.get('replication_count', 1)})  -  "
+            f"{r.get('method', '?')}",
+            expanded=False,
+        ):
+            st.markdown(f"**Hypothesis** ({r.get('session_id')} round {r.get('round')}):")
+            st.markdown(f"> {r.get('hypothesis', '')}")
+            st.markdown("**Filters**:")
+            st.code(json.dumps(r.get("filters", {}), indent=2), language="json")
+            st.markdown("**Evidence**:")
+            st.code(json.dumps(ev, indent=2, default=str), language="json")
+            st.markdown(f"**Agent confidence**: _{r.get('agent_confidence', '')}_")
+            if r.get("replication_count", 1) > 1:
+                st.markdown(f"**Replications**: {r['replication_count']}")
+                st.code(json.dumps(r.get("replications", []), indent=2), language="json")
+
+
+def render_lineage() -> None:
+    st.title("Hypothesis Lineage")
+    st.caption(
+        "DAG of hypotheses across rounds: nodes are unique hypotheses "
+        "(deduped by content hash), edges show inferred parent->child "
+        "refinements. Status colors: green=promoted, red=refuted, gray=open."
+    )
+
+    from autosignalx.agent import lineage as lineage_mod
+
+    lineage = lineage_mod.build_lineage()
+    nodes = lineage.get("nodes", [])
+    if not nodes:
+        st.warning("No hypotheses in the ledger yet. Run `make agent`.")
+        return
+
+    cols = st.columns(3)
+    cols[0].metric("Hypotheses", len(nodes))
+    cols[1].metric("Promoted", sum(1 for n in nodes if n["status"] == "promoted"))
+    cols[2].metric("Refuted", sum(1 for n in nodes if n["status"] == "refuted"))
+
+    st.divider()
+    df = lineage_mod.lineage_dataframe(lineage)
+    st.dataframe(df, use_container_width=True)
+
+    if not lineage.get("edges"):
+        st.caption("No parent->child edges inferred yet (need >=2 hypotheses with overlapping method/asset/regime).")
+        return
+
+    # Render the DAG with networkx + plotly
+    try:
+        import networkx as nx
+        import plotly.graph_objects as go
+
+        g = nx.DiGraph()
+        for n in nodes:
+            g.add_node(n["id"], **n)
+        for e in lineage["edges"]:
+            g.add_edge(e["source"], e["target"])
+
+        # Layered layout by round
+        pos = {}
+        rounds = sorted({n["round"] for n in nodes})
+        for r in rounds:
+            ns_at = [n for n in nodes if n["round"] == r]
+            for i, n in enumerate(ns_at):
+                pos[n["id"]] = (r, i - len(ns_at) / 2)
+
+        edge_x, edge_y = [], []
+        for src, tgt in g.edges():
+            x0, y0 = pos[src]
+            x1, y1 = pos[tgt]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+        edge_trace = go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            line={"width": 1, "color": "#888"},
+            hoverinfo="none",
+            mode="lines",
+        )
+        color_map = {"promoted": "#2ca02c", "refuted": "#d62728", "open": "#7f7f7f"}
+        node_x, node_y, node_color, node_text, node_hover = [], [], [], [], []
+        for n in nodes:
+            x, y = pos[n["id"]]
+            node_x.append(x)
+            node_y.append(y)
+            node_color.append(color_map.get(n["status"], "#7f7f7f"))
+            node_text.append(n["id"])
+            params = json.dumps(n["params"], default=str)[:80]
+            node_hover.append(f"{n['id']} ({n['status']})<br>round {n['round']}<br>{n['hypothesis'][:120]}<br>params: {params}")
+        node_trace = go.Scatter(
+            x=node_x,
+            y=node_y,
+            mode="markers+text",
+            text=node_text,
+            textposition="bottom center",
+            hovertext=node_hover,
+            hoverinfo="text",
+            marker={"size": 18, "color": node_color, "line": {"width": 1, "color": "#333"}},
+        )
+        fig = go.Figure(
+            data=[edge_trace, node_trace],
+            layout=go.Layout(
+                title="Lineage DAG (round on x-axis)",
+                showlegend=False,
+                xaxis={"title": "round", "showgrid": False, "zeroline": False},
+                yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
+                height=500,
+                margin={"l": 20, "r": 20, "t": 60, "b": 40},
+            ),
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception as e:  # noqa: BLE001
+        st.error(f"DAG rendering failed: {e}")
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -645,6 +1103,13 @@ PANELS = {
     "Signal Discovery Lab": render_signal_lab,
     "Cross-Asset Graph": render_cross_asset_graph,
     "Agent Console": render_agent_console,
+    "Auto-Play Replay": render_auto_play,
+    "Findings": render_findings,
+    "Lineage": render_lineage,
+    "Self-Critique": render_self_critique,
+    "Lessons & Memory": render_lessons,
+    "Telemetry": render_telemetry,
+    "Sessions": render_sessions,
     "Ask the Memory": render_ask_the_memory,
 }
 

@@ -132,6 +132,67 @@ def get_top_features(regime_id: int, top_k: int = 5) -> list[dict[str, Any]]:
     ]
 
 
+def test_significance(
+    method: str,
+    baseline_method: str = "naive",
+    asset: str | None = None,
+    regime_id: int | None = None,
+    p_threshold: float = 0.05,
+) -> dict[str, Any]:
+    """Run the DM + bootstrap promotion gate on a slice.
+
+    Returns ``{promotable: bool, evidence: {...}}``. The evidence dict
+    contains DM statistic, p-value, bootstrap CI on loss difference,
+    skill score, and sample size."""
+    from autosignalx.eval.significance import is_promotable
+
+    f = _load_all_forecasts()
+    if f.empty:
+        return {"promotable": False, "evidence": {"reason": "no forecasts cached"}}
+    if regime_id is not None:
+        rl = _load_regime_labels()
+        if not rl.empty:
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            f = f.merge(rl_join, on="forecast_origin", how="left")
+            f = f[f["regime_id"] == regime_id]
+    if asset is not None:
+        f = f[f["asset"] == asset]
+    promotable, evidence = is_promotable(
+        f, method=method, baseline_method=baseline_method, p_threshold=p_threshold
+    )
+    evidence["filters"] = {"asset": asset, "regime_id": regime_id}
+    return {"promotable": promotable, "evidence": evidence}
+
+
+def spawn_method(spec: dict[str, Any]) -> dict[str, Any]:
+    """Run a new agent-authored forecasting method specified by ``spec``.
+
+    The spec is a constrained JSON DSL (see ``agent.specs`` for schema).
+    On success, the new method's forecasts are persisted to
+    ``reports/ablations/<name>.parquet`` and become available in the
+    Forecast Arena panel and to ``test_significance`` / ``slice_forecasts``
+    for downstream evaluation."""
+    from autosignalx.agent import specs
+
+    return specs.execute(spec)
+
+
+def spawn_method_code(spec: dict[str, Any]) -> dict[str, Any]:
+    """Run an agent-authored forecasting method defined by raw Python source
+    (``spec.code``), executed in a heavily restricted sandbox (Iter 20).
+
+    The code must define ``forecast_fn(asset_train, origin, target_dates)``
+    matching the harness ForecastFn contract. AST validation rejects
+    forbidden imports, dunder access, and dangerous builtins before exec.
+    Generated source is persisted to
+    ``reports/agent/generated_methods/<name>.py`` for audit, and the
+    forecasts go to ``reports/ablations/<name>.parquet`` like any other
+    method."""
+    from autosignalx.agent import codegen
+
+    return codegen.execute_code_spec(spec)
+
+
 def get_centrality_summary() -> dict[str, dict[str, float]]:
     """Per-asset centrality dictionary."""
     c = _load_centrality()
@@ -149,7 +210,12 @@ def get_centrality_summary() -> dict[str, dict[str, float]]:
 
 def context_snapshot() -> dict[str, Any]:
     """Compact snapshot of all available artifact summaries -- used to
-    seed the agent's prompts at the start of a run."""
+    seed the agent's prompts at the start of a run.
+
+    Includes the long-horizon ``lessons.md`` (Iter 16) when present so
+    each new session's first round is informed by prior sessions."""
+    from autosignalx.agent import memory as memory_mod
+
     return {
         "methods": list_methods(),
         "assets": list_assets(),
@@ -159,6 +225,7 @@ def context_snapshot() -> dict[str, Any]:
         },
         "centrality": get_centrality_summary(),
         "overall_metrics": slice_forecasts().get("per_method", []),
+        "prior_sessions_lessons": memory_mod.load_lessons(max_chars=4000),
     }
 
 

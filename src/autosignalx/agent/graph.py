@@ -56,7 +56,7 @@ def make_propose_node(provider: LLMProvider):
         h = _safe_parse_json(raw)
         if not h:
             h = {"hypothesis": "(parse failed)", "experiment": {}, "raw": raw[:500]}
-        entry = {"round": rd, "step": "propose", "content": h}
+        entry = {"round": rd, "step": "propose", "content": h, "session_id": state.get("session_id")}
         ledger.append(entry)
         state["current_hypothesis"] = h
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -78,10 +78,54 @@ def experiment_node(state: AgentState) -> AgentState:
             asset=params.get("asset"),
             regime_id=params.get("regime_id"),
         )
+        method = params.get("method")
+        target_filters = {
+            "asset": params.get("asset"),
+            "regime_id": params.get("regime_id"),
+        }
+    elif exp_type == "spawn_method":
+        # Agent-authored method via the Iter 13 constrained code-spec DSL.
+        spec = params.get("spec", {}) or {}
+        result = tools.spawn_method(spec)
+        method = spec.get("name") if result.get("status") == "ok" else None
+        target_filters = {"asset": None, "regime_id": None}
+    elif exp_type == "spawn_method_code":
+        # Iter 20 sandboxed Python forecast_fn.
+        spec = params.get("spec", {}) or {}
+        result = tools.spawn_method_code(spec)
+        method = spec.get("name") if result.get("status") == "ok" else None
+        target_filters = {"asset": None, "regime_id": None}
     else:
         result = {"error": f"unknown experiment type: {exp_type}"}
+        method = None
+        target_filters = {}
 
-    entry = {"round": rd, "step": "experiment", "content": result}
+    # Auto-promotion attempt: if a non-naive method now exists, run the
+    # significance gate against naive on the same slice and persist a
+    # finding when it passes.
+    if method and method != "naive":
+        sig = tools.test_significance(
+            method=method,
+            asset=target_filters.get("asset"),
+            regime_id=target_filters.get("regime_id"),
+        )
+        result["significance"] = sig
+        if sig.get("promotable"):
+            from autosignalx.agent import findings as findings_mod
+
+            finding = findings_mod.promote(
+                hypothesis=h.get("hypothesis", ""),
+                method=method,
+                filters=target_filters,
+                evidence=sig["evidence"],
+                agent_confidence="auto-promoted by experiment gate",
+                round=rd,
+                session_id=state.get("session_id", "unknown"),
+                parent_hypothesis_ids=h.get("parent_hypothesis_ids", []),
+            )
+            result["promoted_finding_id"] = finding.get("id")
+
+    entry = {"round": rd, "step": "experiment", "content": result, "session_id": state.get("session_id")}
     ledger.append(entry)
     state["current_experiment"] = result
     state["ledger"] = state.get("ledger", []) + [entry]
@@ -95,7 +139,7 @@ def make_critique_node(provider: LLMProvider):
         exp = state.get("current_experiment") or {}
         msgs = prompts.critic_messages(h, exp)
         raw = provider.chat(msgs, step="critique", round=rd)
-        entry = {"round": rd, "step": "critique", "content": raw.strip()}
+        entry = {"round": rd, "step": "critique", "content": raw.strip(), "session_id": state.get("session_id")}
         ledger.append(entry)
         state["current_critique"] = raw.strip()
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -109,7 +153,7 @@ def make_decide_node(provider: LLMProvider):
         rd = state["round"]
         max_rounds = state.get("max_rounds", 5)
         if rd + 1 >= max_rounds:
-            entry = {"round": rd, "step": "decide", "content": {"action": "stop", "reason": "max_rounds reached"}}
+            entry = {"round": rd, "step": "decide", "content": {"action": "stop", "reason": "max_rounds reached"}, "session_id": state.get("session_id")}
             state["next_action"] = "stop"
         else:
             ledger_summary = ledger.summarize_for_prompt(state.get("ledger", []))
@@ -119,7 +163,7 @@ def make_decide_node(provider: LLMProvider):
             action = str(decision.get("action", "continue"))
             if action not in {"continue", "stop"}:
                 action = "continue"
-            entry = {"round": rd, "step": "decide", "content": decision or {"action": action}}
+            entry = {"round": rd, "step": "decide", "content": decision or {"action": action}, "session_id": state.get("session_id")}
             state["next_action"] = action
         ledger.append(entry)
         state["ledger"] = state.get("ledger", []) + [entry]
@@ -152,8 +196,14 @@ def build_agent_graph(provider: LLMProvider):
     return graph.compile()
 
 
-def run(max_rounds: int = 5, seed: int = 42, record_replay: bool = False) -> list[dict]:
+def run(
+    max_rounds: int = 5,
+    seed: int = 42,
+    record_replay: bool = False,
+    session_id: str | None = None,
+) -> list[dict]:
     """Top-level entry point. Returns the full ledger after the run."""
+    from autosignalx.agent.findings import make_session_id
     from autosignalx.agent.llm import get_provider
 
     provider = get_provider(record_replay=record_replay)
@@ -168,6 +218,7 @@ def run(max_rounds: int = 5, seed: int = 42, record_replay: bool = False) -> lis
         "current_critique": None,
         "current_experiment": None,
         "next_action": "continue",
+        "session_id": session_id or make_session_id(),
     }
     final = app.invoke(initial, {"recursion_limit": max_rounds * 6 + 4})
     return final.get("ledger", [])
