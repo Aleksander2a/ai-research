@@ -56,6 +56,12 @@ graph:
 agent:
 	uv run autosignalx agent run --fresh
 
+chat-index:
+	uv run autosignalx chat index
+
+chat-eval:
+	uv run autosignalx chat eval
+
 scheduled-session:
 	bash scripts/run_session.sh
 

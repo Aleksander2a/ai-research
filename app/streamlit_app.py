@@ -674,86 +674,70 @@ def render_agent_console() -> None:
 def render_ask_the_memory() -> None:
     st.title("Ask the Memory")
     st.caption(
-        "Free-form question against the agent's experiment ledger. In live "
-        "mode, the LLM answers using ledger context. In replay mode, simple "
-        "keyword search returns matching ledger entries."
+        "Grounded RAG chat over the run corpus (ledger, findings, lessons, "
+        "trace quality, self-critique, telemetry, backtests). Every claim "
+        "carries a citation; off-corpus questions are refused."
     )
 
     _panel_doc(
-        inputs="`reports/agent/ledger.jsonl` (full agent step history). Free-form text query from `st.chat_input`.",
-        operations="**Live mode** (DEEPINFRA_API_KEY set, AUTOSIGNALX_REPLAY != true): summarize the most recent 40 ledger entries; send `(system: 'answer questions about an experiment ledger; cite specific rounds') + (user: ledger summary + question)` to the chat-role LLM. **Replay mode** (no key): split the question into terms (length > 2), filter ledger entries whose JSON-stringified content contains any term, return the first 8 matches.",
-        goal="Let reviewers query the agent's memory in natural language without browsing the raw JSONL.",
-        interpretation="Live answers cite specific rounds (e.g., 'in round 3 the agent proposed X'); replay answers list matching ledger entries with their round / step / content excerpt. Prior chat history is preserved within the session via `st.session_state.memory_history`.",
+        inputs="`reports/chat/chunks.jsonl` + `vectors.npy` (built by `autosignalx chat index`). User question via `st.chat_input`.",
+        operations="Embed the question (DeepInfra `bge-large-en-v1.5` in live mode; deterministic hashed-bag in replay/no-key mode). Top-K cosine retrieval over the index. Live mode: send retrieved chunks + cite-or-refuse system prompt to the chat-role LLM. Replay mode: render the top-K chunks with their citation IDs (no LLM call).",
+        goal="Let reviewers query AutoSignal-X's discoveries in natural language with verifiable citations back to the underlying artifacts.",
+        interpretation="The answer is followed by a citation chip row (e.g. `finding:f_9395cd1bd1be`, `ledger:r3/skeptic`, `backtest:<run_id>/TopKLong`). When evidence is absent the assistant refuses rather than hallucinating.",
     )
 
-    from autosignalx.agent import ledger as ledger_mod
+    from autosignalx.chat import answer as answer_mod
+    from autosignalx.chat import index as index_mod
     from autosignalx.config import settings
 
-    entries = ledger_mod.load()
-    if not entries:
-        st.warning("Ledger empty. Run `make agent` first.")
+    idx = index_mod.load_index()
+    if idx is None or not idx.chunks:
+        st.warning(
+            "Chat index not built. Run `autosignalx chat index` (or click below)."
+        )
+        if st.button("Build chat index now"):
+            with st.spinner("Indexing artifacts..."):
+                idx = index_mod.build_index()
+            st.success(f"Indexed {len(idx.chunks)} chunks (mode={idx.mode}).")
+            st.rerun()
         return
+
+    cols = st.columns([3, 1])
+    cols[0].caption(
+        f"Index: {len(idx.chunks)} chunks · mode={idx.mode} · model={idx.model}"
+    )
+    if cols[1].button("Rebuild index"):
+        with st.spinner("Re-indexing..."):
+            index_mod.build_index()
+        st.success("Rebuilt.")
+        st.rerun()
 
     if "memory_history" not in st.session_state:
         st.session_state.memory_history = []
 
-    for q, a in st.session_state.memory_history:
+    for q, a, cites in st.session_state.memory_history:
         with st.chat_message("user"):
             st.markdown(q)
         with st.chat_message("assistant"):
             st.markdown(a)
+            if cites:
+                st.markdown(
+                    " ".join(f"`{c}`" for c in cites),
+                    help="Citation IDs reference on-disk artifacts.",
+                )
 
     question = st.chat_input("Ask the agent's memory...")
     if not question:
         return
 
-    if settings.use_replay or not settings.deepinfra_api_key:
-        # Deterministic fallback: keyword search
-        ql = question.lower()
-        hits = [
-            e for e in entries
-            if any(
-                ql_term in json.dumps(e, default=str).lower()
-                for ql_term in ql.split()
-                if len(ql_term) > 2
-            )
-        ][:8]
-        if hits:
-            answer_parts = ["**Replay-mode keyword search** (no LLM call):"]
-            for e in hits:
-                answer_parts.append(
-                    f"- round {e.get('round')} {e.get('step')}: "
-                    f"{json.dumps(e.get('content', ''), default=str)[:200]}"
-                )
-            answer = "\n".join(answer_parts)
-        else:
-            answer = "_No ledger entries matched. Try different keywords._"
-    else:
-        # Live mode: stuff ledger into the prompt
-        try:
-            from autosignalx.agent.ledger import summarize_for_prompt
-            from autosignalx.agent.llm import get_provider
-
-            provider = get_provider(record_replay=False)
-            ledger_summary = summarize_for_prompt(entries, limit=40)
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You answer questions about an experiment ledger from a "
-                        "quantitative ML research agent. Cite specific rounds when relevant."
-                    ),
-                },
-                {
-                    "role": "user",
-                    "content": f"## Ledger\n{ledger_summary}\n\n## Question\n{question}",
-                },
-            ]
-            answer = provider.chat(messages, step="ask_memory", round=-1)
-        except Exception as e:  # noqa: BLE001
-            answer = f"LLM call failed: {e}"
-
-    st.session_state.memory_history.append((question, answer))
+    spinner_text = (
+        "Retrieving + asking LLM..."
+        if (not settings.use_replay and settings.deepinfra_api_key)
+        else "Retrieving (replay mode, no LLM call)..."
+    )
+    with st.spinner(spinner_text):
+        result = answer_mod.answer_question(question, index=idx)
+    st.session_state.memory_history.append((question, result.text, result.citations))
     st.rerun()
 
 

@@ -327,6 +327,31 @@ Default-flow artifacts under `data/cache/` and `reports/` are unchanged when `--
 
 The forecast (baseline + Chronos-2) and backtest layers are fully study-aware. The discovery layers (regime, signal, graph, agent) still write to project-default paths regardless of `--study`. Reason: those layers consume more user time and have subtler precondition requirements (sample sizes, regime-count selection, agent cost) that a future Phase 2 sub-iteration will address. The forecast → backtest pipeline is the path most users want for "see how the system behaves on my universe", so that path was prioritised.
 
+# Phase 3 — Conversational explainability (post-submission)
+
+Phase 3 replaces the original "Ask the Memory" panel with a **grounded RAG chat** over the run corpus. The corpus spans the agent ledger, promoted findings, lessons, trace-quality scores, self-critiques, telemetry summaries, and backtest run metrics. Every claim the assistant makes is followed by a `citation_id` (e.g. `finding:f_9395cd1bd1be`, `ledger:r3/skeptic`, `backtest:<run_id>/TopKLong`) copied verbatim from the retrieved evidence; questions whose answer is not in the corpus trigger a canonical refusal rather than a hallucination.
+
+### Pipeline
+
+1. **Corpus.** `autosignalx chat index` walks `reports/agent/*.jsonl`, `reports/agent/lessons.md`, and `reports/backtest/runs/*/metrics.json` to produce a flat list of citable `Chunk(citation_id, kind, text, meta)` records.
+2. **Embedding.** Live mode calls DeepInfra `BAAI/bge-large-en-v1.5` (1024-dim) and caches each text by content hash under `reports/agent/embed_cache/`. Replay/no-key mode falls back to a deterministic hashed-bag embedding (256-dim) so the panel works without a key.
+3. **Retrieval.** Top-K cosine similarity (K=6) via a single matmul over the L2-normalized matrix. The corpus is small (low thousands of chunks), so no FAISS/ANN index is warranted.
+4. **Generation.** Live mode sends a strict cite-or-refuse system prompt + the retrieved chunks to the chat-role LLM (DeepSeek-V4-Pro by default). Replay mode renders the top retrieved chunks with their citation IDs (no LLM call) so the panel is fully reproducible without a key.
+5. **Citation enforcement.** The answer is post-filtered to extract `[citation_id]` markers; if a live-mode response contains zero valid citations, the assistant's text is overridden with the canonical refusal.
+
+### Grounding eval
+
+`autosignalx chat eval` exercises a bundled fixture of seven questions: five grounded (covering each artifact kind) and two intentionally off-corpus. The harness scores **citation recall** (does the top-K contain the expected artifact kind?) and **refusal accuracy** (does the off-corpus question trigger refusal in live mode?). On the bundled artifacts in deterministic replay mode, recall is 0.60 and refusal is n/a (replay always renders top retrievals); live mode with proper embeddings is expected to score substantially higher and exercise the refusal branch on off-corpus questions.
+
+### Surfaces
+
+- **CLI**: `autosignalx chat {index, status, ask, eval}`.
+- **Cockpit**: the **Ask the Memory** panel is now a chat interface backed by the index, with a "Rebuild index" button and a citation chip row beneath every assistant turn.
+
+### Honest scope of Phase 3
+
+The corpus loader covers all seven on-disk artifact kinds but treats every JSONL row as a single chunk -- long ledger entries are truncated to 1200 chars rather than split semantically. Hashed-bag embeddings used in replay mode are intentionally lossy (per-question retrieval is noisy on subtle queries); they exist so the deterministic CI / no-key reviewer path works, not as a replacement for real embeddings. Expanding the eval set, semantic chunking inside long ledger entries, and bundling a canned live-mode chat trace into `replay/` are the obvious follow-ups.
+
 ## Limitations
 
 - **One promoted finding from one recorded session.** Replication requires multi-session runs via `scripts/run_session.sh`. The self-critique correctly flags the absence of subsequent confirming evidence.

@@ -98,7 +98,7 @@ The Streamlit cockpit has 15 panels in the sidebar. Walk left-to-right for the f
 14. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
 15. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
 16. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
-17. **Ask the Memory** — free-form chat against the ledger (LLM in live mode, keyword search in replay mode).
+17. **Ask the Memory** — grounded RAG chat over the run corpus (ledger, findings, lessons, trace quality, self-critique, telemetry, backtests). Every claim carries a citation back to the source artifact; off-corpus questions are refused. Live mode uses DeepInfra `bge-large-en-v1.5` embeddings; replay/no-key mode uses deterministic hashed-bag embeddings.
 
 A **Study scope** selector in the sidebar switches study-aware panels (Forecast Arena, Backtest Arena) to read from a chosen study's tree; the default scope reads the project's canonical artifacts.
 
@@ -137,6 +137,11 @@ autosignalx agent status
 
 autosignalx backtest run [--study X] [--strategies "..."] [--start YYYY-MM-DD] [--end YYYY-MM-DD] [--cost-bps N]
 autosignalx backtest status [--study X]
+
+autosignalx chat index [--force-hashed]   Build the RAG index over current artifacts
+autosignalx chat status                   Inventory of indexed chunks by kind
+autosignalx chat ask "<question>"         One-shot grounded Q&A
+autosignalx chat eval                     Run the bundled grounding eval set
 ```
 
 Make targets wrap each command (`make data`, `make baseline`, `make forecast`, `make regime`, `make signal`, `make graph`, `make agent`, `make scheduled-session`), plus `make sync`, `make test`, `make lint`, `make demo`, `make clean`.
