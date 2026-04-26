@@ -15,6 +15,7 @@ The ledger is the persistent memory cell. The cockpit's 'Ask the Memory'
 panel reads from it to answer questions about past agent reasoning."""
 
 from autosignalx.agent import (  # noqa: F401
+    codegen,
     debate,
     findings,
     graph,

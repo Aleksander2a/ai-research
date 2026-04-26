@@ -177,6 +177,22 @@ def spawn_method(spec: dict[str, Any]) -> dict[str, Any]:
     return specs.execute(spec)
 
 
+def spawn_method_code(spec: dict[str, Any]) -> dict[str, Any]:
+    """Run an agent-authored forecasting method defined by raw Python source
+    (``spec.code``), executed in a heavily restricted sandbox (Iter 20).
+
+    The code must define ``forecast_fn(asset_train, origin, target_dates)``
+    matching the harness ForecastFn contract. AST validation rejects
+    forbidden imports, dunder access, and dangerous builtins before exec.
+    Generated source is persisted to
+    ``reports/agent/generated_methods/<name>.py`` for audit, and the
+    forecasts go to ``reports/ablations/<name>.parquet`` like any other
+    method."""
+    from autosignalx.agent import codegen
+
+    return codegen.execute_code_spec(spec)
+
+
 def get_centrality_summary() -> dict[str, dict[str, float]]:
     """Per-asset centrality dictionary."""
     c = _load_centrality()

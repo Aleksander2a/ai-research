@@ -89,6 +89,12 @@ def experiment_node(state: AgentState) -> AgentState:
         result = tools.spawn_method(spec)
         method = spec.get("name") if result.get("status") == "ok" else None
         target_filters = {"asset": None, "regime_id": None}
+    elif exp_type == "spawn_method_code":
+        # Iter 20 sandboxed Python forecast_fn.
+        spec = params.get("spec", {}) or {}
+        result = tools.spawn_method_code(spec)
+        method = spec.get("name") if result.get("status") == "ok" else None
+        target_filters = {"asset": None, "regime_id": None}
     else:
         result = {"error": f"unknown experiment type: {exp_type}"}
         method = None
