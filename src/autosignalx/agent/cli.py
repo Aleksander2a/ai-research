@@ -116,6 +116,21 @@ def score_traces_cmd(
         )
 
 
+@agent_app.command("self-critique")
+def self_critique_cmd() -> None:
+    """Run self-critique over every promoted finding."""
+    from autosignalx.agent import self_critique as sc
+
+    findings = __import__("autosignalx.agent", fromlist=["findings"]).findings.load()
+    if not findings:
+        console.print("No promoted findings to critique.")
+        return
+    console.print(f"Self-critiquing {len(findings)} promoted findings...")
+    out = sc.critique_all_findings()
+    for r in out:
+        console.print(f"  {r['finding_id']}: {r['current_state']}  --  {r['rationale'][:80]}")
+
+
 @agent_app.command("status")
 def status_cmd() -> None:
     """Print ledger size and last-round summary."""

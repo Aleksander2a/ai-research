@@ -23,6 +23,7 @@ from autosignalx.agent import (  # noqa: F401
     llm,
     memory,
     prompts,
+    self_critique,
     sessions,
     specs,
     state,

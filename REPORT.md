@@ -964,3 +964,67 @@ Added Makefile target that wraps the scheduled runner for manual invocation; the
 - `productivity_trend()` computes cumulative `cum_findings` correctly across two sessions.
 
 Suite total: 132 passing.
+
+---
+
+## Iter 19 — WOW demo: auto-play replay, self-critique, recorded session, the win
+
+This is the iteration where everything from Iters 10-18 lands in the cockpit as a coherent reviewer experience, and where the agent records its first **DM-significant promoted finding**.
+
+### The recorded win
+
+Running `autosignalx agent run --mode debate --max-rounds 5 --record-replay` followed by `agent run --mode single --max-rounds 3`, the agent autonomously:
+
+1. (Round 0, debate mode) Theorist proposed: *"chronos2_multivariate beats naive for TLT in regime 3 because TLT's high betweenness centrality makes it a bridge between market clusters whose dynamics the multivariate transformer can capture."* The hypothesis composed findings from Iter 4 (regime structure), Iter 5 (per-regime macros), and Iter 6 (graph centrality).
+2. The experiment ran the slice (n=407 forecast rows). The auto-promotion gate (Iter 10) ran DM and block bootstrap.
+3. **Result**: skill +5.4% MAE, DM **p=0.040**, bootstrap CI low **+0.005** (strictly above zero), method_mae 1.84 vs baseline_mae 1.95.
+4. Auto-promoted to `reports/agent/findings.jsonl` as `f_9395cd1bd1be` with full provenance.
+5. Skeptic challenged on multiple-comparison risk; Adjudicator returned `VERDICT: support`.
+6. (Same debate session, separately) Theorist also AUTHORED a new method via the Iter 13 DSL: `efa_dxy_bridge_focus` (chronos2_multivariate restricted to `DX-Y.NYB` covariate, asset_subset EFA). The method was registered, ran through the harness, and adjudicated -- the bridge-focus method *did not* outperform naive (refute), so no promotion.
+7. (Subsequent single-mode session) The agent re-tested its own `efa_dxy_bridge_focus` method on regime 3 EFA, confirming the earlier refute.
+
+This is the conditional-improvement search the Phase 1 negative result set up. The agent overcame the naive baseline on a specific (regime, asset, method) slice with statistical significance and structured evidence.
+
+### The Auto-Play panel
+
+`render_auto_play()` in `app/streamlit_app.py` (with three new `st.session_state` fields: `playback_idx`, `playback_speed`, `is_playing`) reads `reports/agent/ledger.jsonl` and walks through it round-by-round. Controls:
+
+- **Play / Pause / Reset** buttons.
+- **Speed slider** (0.5x / 1x / 2x / 4x).
+- **Round slider** for direct jump.
+- **Progress bar** showing current step / total.
+- Each step rendered as a chat-style message with a step-letter icon ([T]heorist, [S]keptic, [E]xperiment, [C]ritique, [A]djudicator, [D]ecide).
+
+When `is_playing` is True the panel auto-advances on each Streamlit re-run with `time.sleep(1/speed)`; reviewers literally **watch** the agent reason in slow motion.
+
+### Self-Critique (`agent/self_critique.py`)
+
+For each promoted finding, an LLM judge re-reads the finding against the current state of the ledger + other findings and returns one of `{reinforced, unchanged, weakened, refuted}` with a one-sentence rationale citing later evidence. Records persist to `reports/agent/self_critique.jsonl`.
+
+`autosignalx agent self-critique` runs the judge over every promoted finding. The cockpit's new **Self-Critique** panel shows verdicts grouped by state, each with the judge's rationale and timestamp.
+
+For `f_9395cd1bd1be` (TLT/regime 3/chronos2_multivariate), the judge returned `unchanged` -- "no subsequent evidence directly addresses TLT in regime 3 or the Granger bridge mechanism," which is honest: a single session doesn't replicate a finding.
+
+### Cockpit sidebar at end of Phase 2
+
+15 panels total, in walk order: Overview → Data → Forecast Arena → Regime Explorer → Signal Discovery Lab → Cross-Asset Graph → **Agent Console → Auto-Play Replay → Findings → Lineage → Self-Critique → Lessons & Memory → Telemetry → Sessions** → Ask the Memory.
+
+The new headline section in **Overview** opens with a green success callout describing the WOW finding and citing finding ID `f_9395cd1bd1be` so reviewers can jump to the Findings panel and see the evidence.
+
+### What's committed under reports/
+
+- `reports/agent/ledger.jsonl` — 16 entries across debate (1 round) + single (3 rounds), spanning two sessions
+- `reports/agent/findings.jsonl` — 1 promoted finding (the TLT win)
+- `reports/agent/lessons.md` — consolidated session notes
+- `reports/agent/trace_quality.jsonl` — per-round quality scores from the LLM judge
+- `reports/agent/telemetry.jsonl` — cost/latency/token records (real DeepInfra spend)
+- `reports/agent/self_critique.jsonl` — judge verdicts on the promoted finding
+- `reports/ablations/efa_dxy_bridge_focus.parquet` — the agent-authored method's forecasts
+- `replay/agent_steps.jsonl` — the recorded LLM responses (reviewers without keys see the same trace)
+
+### Tests (2 new for self_critique)
+
+- Replay-provider judge returns `current_state` and `rationale`; persists.
+- Unparseable response defaults `current_state` to `unchanged`.
+
+Suite total: 134 passing.
