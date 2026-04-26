@@ -1,7 +1,9 @@
 """AutoSignal-X — Streamlit research cockpit.
 
-A reviewer-journey UI that surfaces, panel by panel, what the system has
-done and what it has discovered. Panels light up as their iterations land."""
+15 panels in the sidebar, each a read-only viewer over a typed artifact
+written by one of the system's layers. Every panel includes a standardized
+'About this panel' expander documenting its inputs, operations / algorithms,
+goal, and how to interpret the results."""
 
 from __future__ import annotations
 
@@ -19,75 +21,102 @@ st.set_page_config(
 )
 
 
+def _panel_doc(
+    inputs: str,
+    operations: str,
+    goal: str,
+    interpretation: str,
+    expanded: bool = False,
+) -> None:
+    """Standardized 'About this panel' expander rendering 4 structured fields."""
+    with st.expander("About this panel", expanded=expanded):
+        st.markdown(f"**Inputs (data this panel reads).** {inputs}")
+        st.markdown(f"**Operations / algorithms.** {operations}")
+        st.markdown(f"**Goal.** {goal}")
+        st.markdown(f"**How to interpret.** {interpretation}")
+
+
 def render_overview() -> None:
     st.title("AutoSignal-X")
     st.caption(
-        "A modular AI research instrument for discovering predictive structure "
-        "in dynamic markets."
+        "A 5-layer modular AI research system for discovering predictive structure "
+        "in liquid daily ETF prices, paired with a multi-agent research loop."
     )
 
     st.markdown(
         """
-        **Thesis.** Can a multi-model AI pipeline outperform standalone forecasting
-        systems by explicitly modeling latent regimes, structured signal relevance,
-        and relational dependencies?
+        **Research question.** For which (regime, asset, method) combinations does a
+        layered forecasting stack outperform the naive baseline on daily ETF prices,
+        and is that outperformance statistically significant under both Diebold-Mariano
+        (p < 0.05) and a positive bootstrap CI on the loss difference?
 
-        This cockpit is a *research artifact*: every layer's output is inspectable,
-        every experiment is logged into a persistent ledger, and the agent's
-        reasoning is rendered as you watch it.
+        **Architecture.** Five model layers (L1-L5) plus an agent that orchestrates
+        them. Each layer persists outputs as typed parquet/JSONL artifacts under
+        `reports/`; the agent reads everything through a shared tool surface and
+        writes its own structured outputs (ledger, findings, lessons, telemetry,
+        trace quality, self-critique). Every cockpit panel is a read-only viewer
+        over those artifacts.
         """
     )
 
-    st.success(
-        "**Reviewer journey.** Walk the panels left-to-right in the sidebar: "
-        "**Data** -> **Forecast Arena** -> **Regime Explorer** -> "
-        "**Signal Discovery Lab** -> **Cross-Asset Graph** -> **Agent Console** -> "
-        "**Ask the Memory**. The story builds layer by layer."
-    )
-
-    st.subheader("Layers (all 5 live)")
-    layer_specs = [
-        ("L1 Forecasting", "Chronos-2 + baselines", "ok"),
-        ("L2 Representation", "Contrastive + KMeans", "ok"),
-        ("L3 Reasoning", "Per-regime ranking", "ok"),
-        ("L4 Relational", "GLASSO + Granger", "ok"),
-        ("L5 Agentic", "LangGraph + DeepInfra", "ok"),
+    st.subheader("Model layers")
+    layer_rows = [
+        ("L1 Forecasting", "Probabilistic point + interval forecasts", "Chronos-2 (multivariate, with covariates) + baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices)"),
+        ("L2 Representation", "Per-timestep latent regime labels", "Contrastive 1D-CNN encoder (16-dim, 60-day windows, triplet loss) + KMeans on embeddings; Gaussian HMM as parallel detector"),
+        ("L3 Reasoning", "Per-regime feature importance", "HistGradientBoostingClassifier per regime + custom permutation importance"),
+        ("L4 Relational", "Cross-asset dependency structure", "GLASSO partial correlations + Granger causality + NetworkX centrality"),
+        ("L5 Agentic", "Hypothesis generation, experimentation, statistical promotion", "LangGraph; debate mode = Theorist (Kimi-K2.6) / Skeptic (GLM-5.1) / Adjudicator (DeepSeek-V4-Pro); 3 ways to author experiments (slice / DSL / sandboxed Python)"),
     ]
-    cols = st.columns(len(layer_specs))
-    for col, (name, impl, status) in zip(cols, layer_specs, strict=False):
-        with col:
-            st.metric(label=name, value=status.upper(), delta=impl, delta_color="off")
+    for name, purpose, impl in layer_rows:
+        st.markdown(f"- **{name}** — *{purpose}.*  {impl}")
 
     st.divider()
-    st.subheader("Headline findings")
-    st.success(
-        "**Phase 2 WOW**: the agent autonomously discovered a DM-significant "
-        "lift over naive. Hypothesis (round 0, debate mode): *chronos2_multivariate "
-        "for TLT in regime 3 outperforms naive because TLT's high betweenness "
-        "centrality makes it a bridge between market clusters that the multivariate "
-        "transformer can capture.* **Verdict: skill +5.4% MAE, DM p=0.040, bootstrap "
-        "CI strictly above zero.** Auto-promoted to the Findings panel."
-    )
-    st.markdown(
-        """
-        - **Iter 3 (negative result, calibrated)**: Chronos-2 underperforms naive on
-          daily ETFs by 5-6% MAE *unconditionally*; 80% intervals well-calibrated
-          (CRPS ≈ 2.9). The Phase 2 finding above shows this is regime-specific,
-          not universal.
-        - **Iter 5 (signals)**: Macros dominate every regime's top-5 features for
-          direction prediction, but the **dominant macro depends on the regime**
-          (TNX in Regime 0, DXY in Regimes 1+3, CL=F in Regime 2).
-        - **Iter 6 (graph)**: SPY is the structural hub (eigenvector 0.532); GLD is
-          statistically isolated; TLT is the bridge (highest betweenness 0.429).
-          The agent reasoned about TLT's bridge role to construct its winning hypothesis.
-        - **Iter 12 (debate)**: Theorist (Kimi K2.6) / Skeptic (GLM-5.1) /
-          Adjudicator (DeepSeek V4-Pro) -- three voices per round, each persisted
-          in the ledger and rendered in the cockpit.
-        - **Iter 13 (DSL)**: in the same debate session the agent also AUTHORED a
-          new method (`efa_dxy_bridge_focus`) via the constrained code-spec DSL,
-          ran it through the walk-forward harness, adjudicated the result.
-        """
-    )
+    st.subheader("Cockpit panels (sidebar order)")
+    panel_rows = [
+        ("Overview", "This page. System pitch, layer summary, panel index, system status."),
+        ("Data", "Cache inventory; ETF and macro time series. Reads `data/cache/*.parquet`."),
+        ("Forecast Arena", "Per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands. Reads `reports/ablations/*.parquet`."),
+        ("Regime Explorer", "KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime. Reads `reports/regimes/*.parquet`."),
+        ("Signal Discovery Lab", "Per-regime feature importance bar chart; ranking table; cross-regime importance heatmap. Reads `reports/signals/signal_ranking.parquet`."),
+        ("Cross-Asset Graph", "Centrality table; partial-correlation matrix; top Granger edges. Reads `reports/graph/{edges,centrality}.parquet`."),
+        ("Agent Console", "Chat-style ledger timeline; per-round trace-quality chart at the bottom. Reads `reports/agent/ledger.jsonl`."),
+        ("Auto-Play Replay", "Playback controls (play / pause / reset, 0.5x-4x speed) over the ledger."),
+        ("Findings", "Promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; full statistical evidence per card. Reads `reports/agent/findings.jsonl`."),
+        ("Lineage", "Plotly DAG of hypothesis evolution; nodes colored by status (promoted / refuted / open). Inferred via `agent/lineage.py`."),
+        ("Self-Critique", "Agent's verdicts on its own past findings against current evidence. Reads `reports/agent/self_critique.jsonl`."),
+        ("Lessons & Memory", "Accumulating Markdown of consolidated session notes (long-horizon memory). Reads `reports/agent/lessons.md`."),
+        ("Telemetry", "Cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost. Reads `reports/agent/telemetry.jsonl`."),
+        ("Sessions", "Per-session productivity (rounds, findings, cost-per-finding); cumulative trend. Aggregates all stores by `session_id`."),
+        ("Ask the Memory", "Free-form chat against the ledger (LLM in live mode, keyword search in replay mode)."),
+    ]
+    for name, desc in panel_rows:
+        st.markdown(f"- **{name}** — {desc}")
+
+    st.divider()
+    st.subheader("Inputs and outputs")
+    cols = st.columns(2)
+    with cols[0]:
+        st.markdown(
+            """
+            **Inputs**
+            - **yfinance API**: 8 ETFs (SPY, QQQ, IWM, GLD, TLT, EFA, EEM, HYG) + 4 macro signals (^TNX, ^VIX, DX-Y.NYB, CL=F), daily 2010-01-01 → 2025-12-31.
+            - **DeepInfra API key** (optional): OpenAI-compatible endpoint for the agent layer. Without a key, the agent runs deterministically against `replay/agent_steps.jsonl`.
+            - **`configs/default.yaml`**: date splits, horizon, per-layer hyperparameters.
+            """
+        )
+    with cols[1]:
+        st.markdown(
+            """
+            **Outputs (all under `reports/`)**
+            - `ablations/*.parquet` — per-method walk-forward forecasts.
+            - `regimes/*.parquet` — KMeans + HMM regime labels and embeddings.
+            - `signals/signal_ranking.parquet` — per-regime feature importance.
+            - `graph/{edges,centrality}.parquet` — partial-corr + Granger; centrality.
+            - `agent/{ledger,findings,telemetry,trace_quality,self_critique}.jsonl` — agent state and observability.
+            - `agent/lessons.md` — long-horizon memory.
+            - `agent/generated_methods/` — sandboxed Python authored by the agent.
+            """
+        )
 
     st.divider()
     st.subheader("System")
@@ -102,13 +131,22 @@ def render_overview() -> None:
 
     st.divider()
     st.caption(
-        "See REPORT.md in the repo for the full layer-by-layer findings narrative."
+        "See **REPORT.md** for research questions, methodology, and results. "
+        "See **docs/ARCHITECTURE.md** for data flow, contracts, per-layer wiring, "
+        "agent loop, and the sandbox model."
     )
 
 
 def render_data() -> None:
     st.title("Data")
     st.caption("ETF OHLCV and macro signal cache backing every experiment.")
+
+    _panel_doc(
+        inputs="`data/cache/ohlcv.parquet` (8 ETFs, daily 2010-01-01 → 2025-12-31, ~32k rows) and `data/cache/macro.parquet` (^TNX, ^VIX, DX-Y.NYB, CL=F, ~16k rows). Both pulled from yfinance via `make data`.",
+        operations="Long-format parquet I/O with schema enforcement at the persistence boundary (`data/schema.py:assert_*`). Wide-format pivots via `data/loader.py` for visualization (close, returns, macro). Per-asset timestamps strictly monotonic increasing (asserted at write).",
+        goal="Show the substrate every other layer reads from. Reviewers see at a glance what data is in scope, the time range covered, and the qualitative shape of price and macro series.",
+        interpretation="Row counts and date range should match the configured window. The normalized-close chart shows relative ETF performance; the macro chart shows the level evolution of the four signals (yield, vol, dollar, oil). If any cache is missing, run `make data`.",
+    )
 
     try:
         from autosignalx.data import cache, loader
@@ -168,6 +206,13 @@ def render_forecast_arena() -> None:
     st.caption(
         "Per-method, per-asset forecast comparison on walk-forward windows. "
         "New methods are appended to reports/ablations/ as their iterations land."
+    )
+
+    _panel_doc(
+        inputs="All `reports/ablations/*.parquet` (concatenated). Each file is one method's forecasts on the walk-forward harness, conforming to `eval/contracts.py:FORECAST_COLUMNS_REQUIRED`. Optionally joined with `reports/regimes/kmeans.parquet` on `forecast_origin` for stratification.",
+        operations="`eval/harness.py:summarize` aggregates by method (or by method × regime); `eval/metrics.py` computes MAE, MAPE, directional accuracy, skill-vs-naive (`1 − method_mae / naive_mae`), and CRPS (from the (lower, prediction, upper) triple via pinball-loss for methods with intervals). The trajectory chart pivots predictions by method and overlays the realized target.",
+        goal="Identify which forecasting methods (and which method × regime combinations) outperform the naive baseline on walk-forward forecasts. CRPS shows whether probabilistic methods produce calibrated intervals.",
+        interpretation="`skill_vs_naive > 0` means the method beats naive on MAE; positive but small (<1%) is unlikely to be statistically significant. CRPS is in `adj_close` units; compare across probabilistic methods. Per-(method, regime) rows surface conditional improvements that the overall view masks. The trajectory chart's interval bands show the model's stated uncertainty.",
     )
 
     from pathlib import Path
@@ -305,6 +350,13 @@ def render_regime_explorer() -> None:
         "with a Gaussian HMM as a sanity-check baseline."
     )
 
+    _panel_doc(
+        inputs="`reports/regimes/kmeans.parquet` (window-aligned KMeans labels), `reports/regimes/hmm.parquet` (per-day HMM labels), `reports/regimes/embeddings.parquet` (16-dim contrastive embeddings, one per 60-day window). Produced by `make regime` from market features = SPY+QQQ daily returns + 4 macro signals (standardized).",
+        operations="**KMeans branch**: 1D-CNN encoder (Conv → GELU × 2 → AdaptiveAvgPool1d → Linear) trained 25 epochs with `nn.TripletMarginLoss` (positive: ±3-day adjacent windows; negative: ≥60-day distant windows); KMeans (n_init=10) on 16-dim embeddings. **HMM branch**: `hmmlearn.GaussianHMM(n_components=4, covariance_type='diag', n_iter=100)` directly on standardized features. PCA scatter via `sklearn.decomposition.PCA(n_components=2)` on the embeddings.",
+        goal="Surface the latent market states downstream layers condition on. Regime labels feed the signal layer (per-regime ranking) and the agent's hypothesis space (per-regime, per-asset slices).",
+        interpretation="The two timelines should *broadly* agree in segment structure if the regimes are real (exact alignment is not expected — different methods, different units). The PCA scatter should show visible clusters; if it looks like a uniform blob, the contrastive training failed to separate states. Each regime's relative size determines how much data the signal layer has to fit per regime.",
+    )
+
     from autosignalx.config import settings
 
     regime_dir = settings.reports_dir / "regimes"
@@ -383,6 +435,13 @@ def render_signal_lab() -> None:
         "hurt accuracy more."
     )
 
+    _panel_doc(
+        inputs="Most recently modified `reports/signals/*.parquet`. Produced by `make signal`. Each row is `(regime_id, feature, importance, importance_std, n_samples, rank)`.",
+        operations="For each regime: subsample up to 2,000 (asset, timestamp) rows whose KMeans label = R; build features (8 technical: rolling mean/std, momentum, RSI-14, MACD signal + 8 macro: level + 5-day change for each of ^TNX/^VIX/DX-Y.NYB/CL=F); fit `HistGradientBoostingClassifier(max_iter=200, learning_rate=0.05, max_depth=4)` on (features, binary direction at horizon=21); custom permutation importance with `n_repeats=2` (shuffle one feature at a time, measure accuracy drop, average).",
+        goal="Identify which features carry the most signal for predicting next-21-day price direction within each regime. Feeds the agent's per-regime hypothesis generation.",
+        interpretation="Within each regime, rank 1 is the most important feature (largest accuracy drop when shuffled). Compare across regimes via the heatmap: features with consistently high importance are universal; features that dominate one regime and not others are conditionally important. Importance std gives a coarse sense of stability across the 2 permutation repeats.",
+    )
+
     from autosignalx.config import settings
 
     signals_dir = settings.reports_dir / "signals"
@@ -454,6 +513,13 @@ def render_cross_asset_graph() -> None:
         "Hubs (high eigenvector centrality) are assets whose moves propagate widely."
     )
 
+    _panel_doc(
+        inputs="`reports/graph/edges.parquet` (combined partial-correlation + Granger edges) and `reports/graph/centrality.parquet` (per-node degree / eigenvector / betweenness). Built from daily returns of all 8 ETFs via `make graph`.",
+        operations="**Partial correlations**: `sklearn.covariance.GraphicalLassoCV(cv=3)` fits a sparse precision matrix on standardized returns; off-diagonals are normalized to partial correlations (direct relationships after controlling for all other assets). **Granger causality**: `statsmodels.tsa.stattools.grangercausalitytests(max_lag=5)` for every ordered pair; min p-value across lags compared to threshold 0.05; weight = -log10(p). **Centrality**: NetworkX `degree_centrality`, `eigenvector_centrality_numpy`, `betweenness_centrality` on the partial-correlation graph (treated as undirected, |weight|).",
+        goal="Identify hub assets (whose moves propagate widely), bridge assets (that connect distinct clusters), and isolated assets (that diversify) in the cross-asset structure. The agent uses these typed roles when proposing per-asset hypotheses.",
+        interpretation="**Eigenvector centrality** measures connectedness to other connected nodes (hubs). **Betweenness** measures how often a node lies on shortest paths between other pairs (bridges). The partial-correlation matrix is a diverging-color heatmap: dark red / blue cells indicate strong direct relationships. Granger edges are descriptive ranking under common-factor confounding (treat them as candidate information-flow paths, not causal claims).",
+    )
+
     from autosignalx.config import settings
 
     graph_dir = settings.reports_dir / "graph"
@@ -523,6 +589,13 @@ def render_agent_console() -> None:
         "long-horizon memory cell."
     )
 
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl` (append-only, one JSON per agent step), and `reports/agent/trace_quality.jsonl` for the per-round quality scores at the bottom.",
+        operations="Renders ledger entries chronologically as `st.chat_message` rows, one per step. Steps come from two graph topologies: **single mode** (`propose / experiment / critique / decide`, all from one LLM) and **debate mode** (`theorist / skeptic / experiment / adjudicator`, three different DeepInfra models per round). Auto-promotion runs the DM + bootstrap gate on every non-naive method's experiment slice; passing experiments are tagged with a `promoted_finding_id` and rendered with a green checkmark.",
+        goal="Make the agent's reasoning chain inspectable. Reviewers see exactly what was hypothesized, what evidence was tested, what the critic / adjudicator said, and what was decided.",
+        interpretation="Each chat row is one step in one round. Hypotheses are JSON with `hypothesis` text + `experiment` spec. Experiment results show metrics on the slice. Adjudicator messages end with `VERDICT: support | refute | inconclusive`. The trace-quality chart at the bottom plots per-round LLM-judge scores (clarity / novelty / falsifiability / evidence-citing, 1-5 scale); upward trend = the agent is asking sharper questions over time.",
+    )
+
     from autosignalx.agent import ledger as ledger_mod
     from autosignalx.config import settings
 
@@ -590,6 +663,13 @@ def render_ask_the_memory() -> None:
         "Free-form question against the agent's experiment ledger. In live "
         "mode, the LLM answers using ledger context. In replay mode, simple "
         "keyword search returns matching ledger entries."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl` (full agent step history). Free-form text query from `st.chat_input`.",
+        operations="**Live mode** (DEEPINFRA_API_KEY set, AUTOSIGNALX_REPLAY != true): summarize the most recent 40 ledger entries; send `(system: 'answer questions about an experiment ledger; cite specific rounds') + (user: ledger summary + question)` to the chat-role LLM. **Replay mode** (no key): split the question into terms (length > 2), filter ledger entries whose JSON-stringified content contains any term, return the first 8 matches.",
+        goal="Let reviewers query the agent's memory in natural language without browsing the raw JSONL.",
+        interpretation="Live answers cite specific rounds (e.g., 'in round 3 the agent proposed X'); replay answers list matching ledger entries with their round / step / content excerpt. Prior chat history is preserved within the session via `st.session_state.memory_history`.",
     )
 
     from autosignalx.agent import ledger as ledger_mod
@@ -689,6 +769,13 @@ def render_auto_play() -> None:
         "(or the committed replay) -- live and replay sessions both render here."
     )
 
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl`. Three `st.session_state` keys: `playback_idx`, `playback_speed`, `is_playing`.",
+        operations="Manual controls: play / pause / reset buttons; speed slider (0.5x / 1x / 2x / 4x); step slider for direct jump. While `is_playing`, `playback_idx` advances on each Streamlit rerun via `st.rerun()` after `time.sleep(1.0 / speed)`. Each visible step is rendered as a chat-style message with a step-letter icon.",
+        goal="Pace the agent's reasoning visually. Reviewers can stop on any step, scrub back and forth, and inspect specific rounds without scrolling through the full Agent Console.",
+        interpretation="The progress bar shows `current_step / total_steps`. Promoted findings during playback show a green badge with the finding ID — click through to the Findings panel for the full evidence trail.",
+    )
+
     from autosignalx.agent import ledger as ledger_mod
 
     entries = ledger_mod.load()
@@ -772,6 +859,13 @@ def render_self_critique() -> None:
         "refuted (later evidence contradicts)."
     )
 
+    _panel_doc(
+        inputs="`reports/agent/self_critique.jsonl` (one record per finding × critique run). Generated by `autosignalx agent self-critique`.",
+        operations="For each finding in `findings.jsonl`, send `(system: SELF_CRITIQUE_SYSTEM with 4-state rubric) + (user: original finding + ledger summary + summary of other findings)` to the adjudicator-role LLM. Parse JSON `{current_state, rationale}`.",
+        goal="Detect findings whose support has weakened over time as new sessions add evidence. Counters confirmation bias by forcing periodic re-evaluation against fresh data.",
+        interpretation="`reinforced` = later evidence supports; `unchanged` = no new evidence either way (likely if only one session has run); `weakened` = some related evidence cuts against; `refuted` = subsequent evidence or refute verdicts contradict. Cards are sorted most-recent first; rationales should cite specific later evidence (not generic concerns).",
+    )
+
     from autosignalx.agent import self_critique as sc
 
     rows = sc.load()
@@ -807,6 +901,13 @@ def render_sessions() -> None:
         "Multi-session view. Each row aggregates ledger, findings, "
         "telemetry, and trace-quality records by session_id. Sorted "
         "chronologically (session IDs are YYYYMMDD-prefixed)."
+    )
+
+    _panel_doc(
+        inputs="All four agent stores (`ledger.jsonl`, `findings.jsonl`, `telemetry.jsonl`, `trace_quality.jsonl`) under `reports/agent/`. `agent/sessions.py` aggregates them by `session_id`.",
+        operations="`list_sessions()` collects distinct IDs across stores. `session_summary(sid)` computes per-session aggregates: `n_rounds, n_propose, n_findings, n_refuted, cost_usd, total_tokens, latency_total_ms, avg_clarity, promotion_rate, cost_per_finding`. `productivity_trend()` adds cumulative `cum_findings` and `cum_cost_usd` columns.",
+        goal="Long-horizon productivity view. Tracks how many DM-significant findings the agent produces per session, what each finding costs, and how the rate of new findings evolves over time.",
+        interpretation="**Cost per finding** is the operational ROI metric. **Promotion rate** = findings / propose count; high rate suggests easy hypotheses or weak gates, low rate suggests stringent gates or hard problem. The cumulative trend chart should ideally show findings growing roughly linearly with cost (constant marginal cost per finding).",
     )
 
     from autosignalx.agent import sessions as sessions_mod
@@ -858,6 +959,13 @@ def render_telemetry() -> None:
         "Cached and replay-mode calls don't generate records. "
         "Cost is estimated from a per-model price table (override via "
         "`DEEPINFRA_PRICE_<MODEL>_IN/_OUT` env vars)."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/telemetry.jsonl`. Written by `agent/llm.py:LiveProvider.chat` after every non-cached LLM call.",
+        operations="Per-call records carry `(ts, model, role, step, round, prompt_tokens, completion_tokens, total_tokens, latency_ms, cost_usd, session_id)`. Token counts come from `response.response_metadata.token_usage` (or `usage_metadata`); fallback is a character-count estimate (~4 chars per token). Cost = `(prompt / 1M) × in_price + (completion / 1M) × out_price`, with prices from `agent/telemetry.py:DEFAULT_PRICES` overridable via env vars.",
+        goal="Operational observability. Make the cost / latency footprint of agent autonomy visible. Cost-per-finding (in the Sessions panel) is the headline metric this panel feeds.",
+        interpretation="**Per-model breakdown** shows which agent role (Theorist / Skeptic / Adjudicator / chat / consolidate) consumes most of the budget. **Per-step breakdown** shows whether the cost concentrates in propose-time or critique-time. **Cumulative cost chart** is a single-line view of total spend over the session — should be roughly linear in number of LLM calls. Cached and replay-mode calls don't appear (they're free).",
     )
 
     from autosignalx.agent import telemetry as telemetry_mod
@@ -935,6 +1043,13 @@ def render_lessons() -> None:
         "(Run `autosignalx agent consolidate` to update.)"
     )
 
+    _panel_doc(
+        inputs="`reports/agent/lessons.md` (Markdown, append-only across sessions, `---` separators between sessions).",
+        operations="`agent/memory.py:consolidate(session_id, ledger, findings, provider)` sends `(system: CONSOLIDATOR_SYSTEM with strict 5-section structure under 350 words) + (user: session ID + date + last 40 ledger entries + summary of promoted findings)` to the adjudicator-role LLM. Output is appended to lessons.md by `append_to_lessons`. The next session's `tools.context_snapshot()` includes the most recent ~4000 chars of lessons under the key `prior_sessions_lessons`.",
+        goal="Long-horizon memory. Compress each session's raw ledger into a short structured summary the agent can re-consume in subsequent sessions, so cross-session continuity does not require re-stuffing the full ledger into context.",
+        interpretation="Each section follows the same 5-block structure: **What was tried** | **What worked** | **What was refuted** | **Patterns observed** | **Open directions for next session**. 'Open directions' becomes natural seeds for the agent's first hypothesis in the next session.",
+    )
+
     from autosignalx.agent import memory as memory_mod
 
     text = memory_mod.load_lessons(max_chars=20000)
@@ -953,6 +1068,13 @@ def render_findings() -> None:
         "Promoted findings -- hypotheses that passed the statistical "
         "promotion gate (Diebold-Mariano p < 0.05 AND positive bootstrap CI). "
         "Each card carries the full evidence trail."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/findings.jsonl`. Each record: `(id, hypothesis, method, filters, evidence, agent_confidence, round, session_id, promoted_at, parent_hypothesis_ids, replication_count, replications)`.",
+        operations="Findings are produced by the auto-promotion path in `agent/graph.py:experiment_node`: every non-naive method's experiment slice is run through `eval/significance.py:is_promotable(method, baseline='naive', asset, regime_id, p_threshold=0.05)`. A method passes when **all three** of (DM p < 0.05, skill > 0, bootstrap CI strictly above zero). Persisting is idempotent on hypothesis content — re-promotion bumps `replication_count` instead of duplicating.",
+        goal="Surface the agent's discoveries that meet the statistical bar. Findings are the system's research output; everything else (ledger, telemetry, etc.) is supporting infrastructure.",
+        interpretation="Sort order is descending by skill-vs-naive (largest improvements first). Per-card evidence: `n` (sample size), `method_mae` vs `baseline_mae` (lower better), `skill_vs_baseline` (positive = better than naive), `dm_statistic` and `p_value` (test of equal predictive accuracy), `bootstrap_ci_low` / `_high` (loss difference distribution). `replication_count > 1` means the same finding has been independently re-discovered across sessions — strongest signal of robustness.",
     )
 
     from autosignalx.agent import findings as findings_mod
@@ -1004,6 +1126,13 @@ def render_lineage() -> None:
         "DAG of hypotheses across rounds: nodes are unique hypotheses "
         "(deduped by content hash), edges show inferred parent->child "
         "refinements. Status colors: green=promoted, red=refuted, gray=open."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl` (propose / theorist entries) + `reports/agent/findings.jsonl` (promoted findings with parent IDs).",
+        operations="`agent/lineage.py:build_lineage` walks the ledger, dedupes propose / theorist entries by content hash (`h_<hash10>` derived from `hypothesis text + experiment params`), and infers parent edges by **method/asset/regime overlap** with prior rounds (within `parent_lookback`). Status assignment: `promoted` = matches a finding's round-of-promotion or appears in `parent_hypothesis_ids`; `refuted` = same-round adjudicator content contains `VERDICT: refute`; `open` otherwise. Plotly graph layout: x-axis = round number, vertical jitter for collision avoidance.",
+        goal="Trace any promoted finding back to its initial brainstorm and see the chain of refinements / refutations that led to it.",
+        interpretation="Green nodes = promoted (finding with that hypothesis was DM-significant). Red nodes = refuted by the adjudicator. Gray = open / inconclusive. Edges point parent → child (predecessor with overlapping params → current refinement). Hover over a node for full hypothesis preview + experiment params. The tabular view above the graph lists every node with its `parents` column (or `(root)` for orphans).",
     )
 
     from autosignalx.agent import lineage as lineage_mod
