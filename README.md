@@ -1,6 +1,6 @@
 # AutoSignal-X
 
-[![Live cockpit](https://img.shields.io/badge/cockpit-live-ff4b4b?logo=streamlit&logoColor=white)](https://autosignal-x.streamlit.app)
+[![Live cockpit](https://img.shields.io/badge/cockpit-live-ff4b4b?logo=streamlit&logoColor=white)](https://ai-research-aleksander2a.streamlit.app)
 [![Static snapshot](https://img.shields.io/badge/snapshot-github_pages-222?logo=github&logoColor=white)](https://aleksander2a.github.io/ai-research/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -59,7 +59,7 @@ Summary:
 Two zero-install ways to see AutoSignal-X without cloning:
 
 - **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — multi-page HTML rendering of every cockpit panel from the latest committed artifacts. No runtime; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
-- **[Live cockpit](https://autosignal-x.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
+- **[Live cockpit](https://ai-research-aleksander2a.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
 
 Both deployments run from this same repo on the same branch.
 

@@ -194,7 +194,7 @@ For the interactive version, run <code>make demo</code>.</p>
 </ul>
 
 <h2>Live demo & code</h2>
-<p>Live cockpit (Streamlit Community Cloud): <a href="https://autosignal-x.streamlit.app" target="_blank">autosignal-x.streamlit.app</a>.</p>
+<p>Live cockpit (Streamlit Community Cloud): <a href="https://ai-research-aleksander2a.streamlit.app" target="_blank">ai-research-aleksander2a.streamlit.app</a>.</p>
 <p>Source: <a href="https://github.com/Aleksander2a/ai-research" target="_blank">github.com/Aleksander2a/ai-research</a>.</p>
 """
     return body, 0
