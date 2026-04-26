@@ -7,7 +7,9 @@ goal, and how to interpret the results."""
 
 from __future__ import annotations
 
+import importlib.util
 import json
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
@@ -19,6 +21,48 @@ st.set_page_config(
     page_title="AutoSignal-X",
     layout="wide",
 )
+
+
+def _load_runtime_checks_module():
+    """Load runtime checks from the current repo checkout, not site-packages."""
+    helper_path = Path(__file__).resolve().parents[1] / "src" / "autosignalx" / "runtime_checks.py"
+    spec = importlib.util.spec_from_file_location(
+        "autosignalx_repo_runtime_checks", helper_path
+    )
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load runtime checks from {helper_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _require_supported_runtime() -> None:
+    expected_repo_root = Path(__file__).resolve().parents[1]
+    checks = _load_runtime_checks_module()
+    result = checks.validate_repo_runtime(expected_repo_root)
+    if result["ok"]:
+        return
+
+    st.title("Runtime setup required")
+    st.error(
+        "This cockpit is not running against the current AutoSignal-X checkout. "
+        "It was likely launched from a stale global or Conda environment, so "
+        "study-aware code is out of sync with the app."
+    )
+    st.markdown("Refresh the repo-local environment and relaunch from the repo root:")
+    st.code("uv sync --all-extras\nuv run streamlit run app/streamlit_app.py")
+    st.caption(f"Expected repo root: {expected_repo_root}")
+    with st.expander("Diagnostics"):
+        st.markdown("**Errors**")
+        for err in result["errors"]:
+            st.markdown(f"- {err}")
+        st.markdown("**Loaded modules**")
+        for detail in result["details"]:
+            st.markdown(f"- {detail}")
+    st.stop()
+
+
+_require_supported_runtime()
 
 
 def _panel_doc(
@@ -215,8 +259,6 @@ def render_forecast_arena() -> None:
         goal="Identify which forecasting methods (and which method × regime combinations) outperform the naive baseline on walk-forward forecasts. CRPS shows whether probabilistic methods produce calibrated intervals.",
         interpretation="`skill_vs_naive > 0` means the method beats naive on MAE; positive but small (<1%) is unlikely to be statistically significant. CRPS is in `adj_close` units; compare across probabilistic methods. Per-(method, regime) rows surface conditional improvements that the overall view masks. The trajectory chart's interval bands show the model's stated uncertainty.",
     )
-
-    from pathlib import Path
 
     from autosignalx.config import settings
     from autosignalx.eval import harness
@@ -1406,6 +1448,10 @@ def render_custom_study() -> None:
         "Each study has its own data cache and reports tree under "
         "`data/studies/<name>/` and `reports/studies/<name>/` so multiple "
         "studies coexist without collision."
+    )
+    st.caption(
+        "Supported local launch: `uv sync --all-extras` once, then "
+        "`uv run streamlit run app/streamlit_app.py` from the repo root."
     )
     _panel_doc(
         inputs="Reads `data/studies/<name>/study.yaml` for each study's "

@@ -7,6 +7,8 @@ exercising the eval-baseline + backtest paths.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -19,6 +21,7 @@ from autosignalx.data import splits
 from autosignalx.eval import harness
 from autosignalx.forecast import baselines
 from autosignalx.study import Study
+from autosignalx.study import pipeline as study_pipeline
 
 
 @pytest.fixture
@@ -67,6 +70,38 @@ def _synth_macro(tickers: tuple[str, ...], start: str, end: str) -> pd.DataFrame
         for ts in idx:
             rows.append({"timestamp": ts, "signal": t, "value": float(rng.normal(0, 1))})
     return pd.DataFrame(rows)
+
+
+def test_pipeline_run_data_fetch_writes_to_study_cache(temp_study, monkeypatch):
+    """Cockpit fetch path writes the fetched frames into the study cache."""
+    s = temp_study
+    ohlcv = _synth_ohlcv(tuple(s.assets), s.start_date, s.end_date)
+    macro_df = _synth_macro(tuple(s.macro), s.start_date, s.end_date)
+    seen: dict[str, object] = {}
+
+    def fake_fetch_all(assets, macro, start, end):
+        seen["assets"] = assets
+        seen["macro"] = macro
+        seen["start"] = start
+        seen["end"] = end
+        return ohlcv, macro_df
+
+    monkeypatch.setattr(study_pipeline.fetch, "fetch_all", fake_fetch_all)
+
+    out = study_pipeline.run_data_fetch(s)
+
+    assert seen == {
+        "assets": s.assets,
+        "macro": s.macro,
+        "start": s.start_date,
+        "end": s.end_date,
+    }
+    assert Path(out["ohlcv_path"]).exists()
+    assert Path(out["macro_path"]).exists()
+    assert s.cache_dir in Path(out["ohlcv_path"]).parents
+    assert s.cache_dir in Path(out["macro_path"]).parents
+    assert out["ohlcv_rows"] == len(ohlcv)
+    assert out["macro_rows"] == len(macro_df)
 
 
 def test_eval_baseline_writes_to_study_ablations_dir(temp_study):
@@ -120,3 +155,29 @@ def test_backtest_with_study_reads_from_study_cache(temp_study):
     default_runs = settings.reports_dir / "backtest" / "runs"
     if default_runs.exists():
         assert not any(p.name == result.run_id for p in default_runs.iterdir())
+
+
+def test_study_pipeline_minimal_flow_runs_end_to_end(temp_study, monkeypatch):
+    """Custom-study fetch -> baseline -> backtest works with the cockpit helpers."""
+    s = temp_study
+    ohlcv = _synth_ohlcv(tuple(s.assets), s.start_date, s.end_date)
+    macro_df = _synth_macro(tuple(s.macro), s.start_date, s.end_date)
+
+    monkeypatch.setattr(
+        study_pipeline.fetch,
+        "fetch_all",
+        lambda assets, macro, start, end: (ohlcv, macro_df),
+    )
+
+    fetch_out = study_pipeline.run_data_fetch(s)
+    baseline_out = study_pipeline.run_baseline_eval(s)
+    backtest_out = study_pipeline.run_backtest_for_study(s)
+
+    assert fetch_out["ohlcv_rows"] == len(ohlcv)
+    assert Path(fetch_out["ohlcv_path"]).exists()
+    assert baseline_out["rows"] > 0
+    assert Path(baseline_out["out_path"]).exists()
+    assert backtest_out["n_strategies"] == 1
+    run_dir = Path(backtest_out["artifacts_dir"])
+    assert run_dir.exists()
+    assert s.backtest_runs_dir in run_dir.parents

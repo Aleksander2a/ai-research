@@ -55,6 +55,7 @@ make demo                      # or: uv run streamlit run app/streamlit_app.py
 ```
 
 The cockpit opens at `http://localhost:8501`. Every cockpit panel renders out-of-the-box because all artifacts are committed; a fresh clone shows real results without running anything. To regenerate any layer's artifacts, run the relevant CLI / Make target (table below).
+Always launch the cockpit from the repo-local uv environment. Launching Streamlit from a stale global or Conda install can import an older `autosignalx` package and break study-aware features.
 
 ## Architecture
 
@@ -176,6 +177,7 @@ autosignalx backtest run  --study tech_megacap   # simulated trading on the test
 ```
 
 The cockpit's **Custom Study** panel exposes the same flow form-based (create / validate / fetch / baseline / backtest) for users who prefer not to touch the terminal. The sidebar **Study scope** selector switches Forecast Arena and Backtest Arena to read from a chosen study's tree; defaults to the project's canonical artifacts.
+For the cockpit path, use the repo-local launch commands above (`uv sync --all-extras`, then `uv run streamlit run app/streamlit_app.py`) so the app and `autosignalx` package stay in sync.
 
 Default behaviour (no `--study`) is unchanged across every CLI subcommand, so studies are strictly additive.
 

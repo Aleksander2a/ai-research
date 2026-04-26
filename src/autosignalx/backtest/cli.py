@@ -13,6 +13,11 @@ from rich.table import Table
 
 from autosignalx.backtest import runner
 from autosignalx.backtest.schemas import BacktestConfig
+from autosignalx.backtest.strategy_selection import (
+    default_cli_strategies,
+    default_study_strategies,
+    ensure_strategy_prerequisites,
+)
 
 backtest_app = typer.Typer(
     name="backtest",
@@ -28,8 +33,12 @@ def run_cmd(
         "", help="Study name; reads prices/forecasts/regimes from study tree."
     ),
     strategies: str = typer.Option(
-        "BuyAndHoldSPY;EqualWeightUniverse;TopKLong:k=3;LongShortKK:k=2;RegimeGated:k=3;FindingDriven",
-        help="Semicolon-separated strategy specs (e.g. 'TopKLong:k=3;LongShortKK:k=2').",
+        "",
+        help=(
+            "Semicolon-separated strategy specs (e.g. "
+            "'TopKLong:k=3;LongShortKK:k=2'). When omitted for study runs, "
+            "AutoSignal-X picks a compatible bundle from the study artifacts."
+        ),
     ),
     start: str = typer.Option("", help="Backtest start (default: study.effective_backtest_start or 2021-01-01)."),
     end: str = typer.Option("", help="Backtest end (default: study.test_end or 2025-12-31)."),
@@ -37,21 +46,34 @@ def run_cmd(
     seed: int = typer.Option(42, help="Random seed."),
 ) -> None:
     """Run the backtest ablation and write artifacts."""
+    active_study = None
     if study:
         from autosignalx.study import Study
 
-        s = Study.load(study)
-        eff_start = start or s.effective_backtest_start
-        eff_end = end or s.test_end
-        eff_cost = cost_bps if cost_bps >= 0 else s.cost_bps
-        eff_universe = list(s.assets)
+        active_study = Study.load(study)
+        eff_start = start or active_study.effective_backtest_start
+        eff_end = end or active_study.test_end
+        eff_cost = cost_bps if cost_bps >= 0 else active_study.cost_bps
+        eff_universe = list(active_study.assets)
     else:
         eff_start = start or "2021-01-01"
         eff_end = end or "2025-12-31"
         eff_cost = cost_bps if cost_bps >= 0 else 5.0
         eff_universe = None
 
-    strat_list = [s.strip() for s in strategies.split(";") if s.strip()]
+    if strategies.strip():
+        strat_list = [s.strip() for s in strategies.split(";") if s.strip()]
+        if not strat_list:
+            raise typer.BadParameter("No valid strategies were provided.")
+        ensure_strategy_prerequisites(
+            strat_list, study=active_study, universe=eff_universe
+        )
+    elif active_study is not None:
+        strat_list = default_study_strategies(active_study)
+    else:
+        strat_list = default_cli_strategies()
+
+    console.print(f"Strategies: {', '.join(strat_list)}")
     cfg = BacktestConfig(
         strategies=strat_list,
         start_date=eff_start,

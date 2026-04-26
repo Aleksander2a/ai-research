@@ -17,6 +17,10 @@ from typing import Any
 
 from autosignalx.backtest import runner as bt_runner
 from autosignalx.backtest.schemas import BacktestConfig
+from autosignalx.backtest.strategy_selection import (
+    default_study_strategies,
+    ensure_strategy_prerequisites,
+)
 from autosignalx.data import cache as data_cache
 from autosignalx.data import fetch, splits
 from autosignalx.eval import harness
@@ -73,11 +77,18 @@ def run_backtest_for_study(
     cost_bps: float | None = None,
 ) -> dict[str, Any]:
     """Run a backtest using the study's config."""
+    if strategies is None:
+        selected_strategies = default_study_strategies(study)
+    else:
+        selected_strategies = list(strategies)
+        if not selected_strategies:
+            raise ValueError("At least one strategy must be provided.")
+        ensure_strategy_prerequisites(
+            selected_strategies, study=study, universe=list(study.assets)
+        )
+
     cfg = BacktestConfig(
-        strategies=strategies
-        or ["BuyAndHoldSPY", "EqualWeightUniverse"]
-        if "SPY" in study.assets
-        else ["EqualWeightUniverse"],
+        strategies=selected_strategies,
         start_date=study.effective_backtest_start,
         end_date=study.test_end,
         cost_bps=cost_bps if cost_bps is not None else study.cost_bps,
