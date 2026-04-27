@@ -63,12 +63,15 @@ select = ["E", "F", "I", "N", "W", "UP", "B", "SIM", "RET", "ARG"]
 ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ARG"]
-# ML convention: capital X for feature matrices (sklearn / numpy idiom)
+"tests/*" = ["ARG", "N803", "N806"]
+# ML convention: capital X for feature matrices (sklearn / numpy idiom);
+# capital M / D / T / X / Y are standard for matrices and time-step counts
+# in the statistical-evaluation modules.
 "src/autosignalx/signal/*" = ["N803", "N806"]
 "src/autosignalx/regime/*" = ["N803", "N806"]
 "src/autosignalx/forecast/*" = ["N803", "N806"]
 "src/autosignalx/graph/*" = ["N803", "N806"]
+"src/autosignalx/eval/*" = ["N803", "N806"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

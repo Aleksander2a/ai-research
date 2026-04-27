@@ -134,6 +134,9 @@ target              float64          realized adj_close
 lower (optional)    float64          10% quantile
 upper (optional)    float64          90% quantile
 regime_id (optional) int             populated by regime.add_regime_to_forecasts
+target_type (optional) string        Phase 7: price | log_return | excess_return | vol | rank
+                                     -- defaults to price for backward compatibility;
+                                     read by eval.contracts.get_target_type
 ```
 
 ### `reports/regimes/`
@@ -236,14 +239,66 @@ self_critique.jsonl     (finding_id, current_state, rationale, ts)
                         current_state ∈ {reinforced, unchanged,
                                           weakened, refuted}
 
-survival.jsonl          Phase-5 hardening output, one row per finding
+survival.jsonl          Phase-5/8/12 hardening output, one row per finding
                         (finding_id, hypothesis, method, filters,
                          original_p, original_skill, fdr_alpha, fdr_q,
-                         survives_fdr, adversarial: {full_test, placebo,
+                         survives_fdr,
+                         rw_q, survives_rw,                    # Phase 8
+                         cpcv: {n_paths, skill_mean, skill_std,
+                                skill_min, skill_max, skill_median, skills}, # Phase 8
+                         deflated_sharpe: {sr_observed, sr_threshold_null,
+                                           dsr, n_trials, n_observations}, # Phase 8
+                         survives_dsr,
+                         adversarial: {full_test, placebo,
                          block_holdout, survives_adversarial},
                          survives_full_test, survives_placebo,
                          survives_block_holdout, survives_all,
+                         survives_all_strict,                  # Phase 8
+                         bayesian: {posterior_mean, posterior_sd,
+                                    prob_positive, bayes_factor, n}, # Phase 12
+                         survives_bayes,                       # Phase 12
                          evaluated_at)
+
+preregistrations.jsonl  Phase 8: hash-committed hypotheses
+                        (id, hypothesis, method, baseline, filters,
+                         decision_rule, predicted_effect, falsifier,
+                         registered_at, session_id, round, proposer_role)
+
+preregistration_resolutions.jsonl   Phase 8: outcomes
+                        (preregistration_id, promoted, evidence,
+                         notes, resolved_at)
+
+red_team.jsonl          Phase 15: per-finding asset-shuffle + time-shift attacks
+                        (finding_id, asset_shuffle, time_shift,
+                         survives_red_team, evaluated_at)
+
+calibration.jsonl       Phase 15: confidence-vs-survival reliability
+                        (role, n, brier, ece, bins, evaluated_at)
+
+coherence.jsonl         Phase 15: per-session coherence record
+                        (session_id, n_rounds, lessons_uptake,
+                         lineage_branching_factor,
+                         theme_persistence_entropy,
+                         coherence_score, evaluated_at)
+
+prompts/<role>.jsonl    Phase 15: per-role prompt version history
+                        (role, version_id, text, registered_at)
+
+prompt_scores.json      Phase 15: aggregated quality across versions
+
+eval_summary.json       Phase 15: rollup of all eval-suite outputs
+
+kg/nodes.jsonl          Phase 14: persistent KG nodes
+                        (id, kind, label, attrs, ts)
+
+kg/edges.jsonl          Phase 14: persistent KG edges
+                        (id, source, target, relation, weight, attrs, ts)
+
+holdout_vault/vault.json   Phase 8: lock metadata
+holdout_vault/results.json Phase 8: one-time vault-open headline numbers
+
+pbo.json                Phase 8: PBO summary (autosignalx eval pbo)
+reproducibility_badge.json  Phase 16: git+env+artifact-hashes bundle
 
 generated_methods/      <name>.py + <name>.json
                         Sandboxed code authored at runtime + metadata
@@ -288,7 +343,18 @@ Pulls from yfinance, normalizes to long format, persists parquet, defines walk-f
 | `fdr.py` | `benjamini_hochberg(p_values, alpha)` -- step-up FDR with monotone q-values; returns per-finding adjusted p-values + boolean survival mask |
 | `adversarial.py` | `replicate_full_test`, `replicate_placebo` (shuffled regime labels), `replicate_block_holdout` (50/50 by `forecast_origin`); `adversarial_replication` bundles all three with a `survives_adversarial` rollup |
 | `survival.py` | `harden_findings(findings_path, fdr_alpha)` -- joins FDR + adversarial into per-finding rows, persists `reports/agent/survival.jsonl`; `load_survival` reader |
-| `cli.py` | `autosignalx eval baseline` / `chronos` / `status` (hardening is exposed under `autosignalx agent harden`) |
+| `targets.py` | Phase 7: target-type adapters -- `to_log_return`, `to_excess_return`, `to_realized_vol`, `to_cross_sectional_rank`, `convert_target` dispatch |
+| `metrics_returns.py` | Phase 7: returns-specific metrics -- `forecast_sharpe`, `hit_rate_returns`, `ic_pearson`, `ic_spearman`, `summarise_returns` |
+| `cpcv.py` | Phase 8: combinatorial purged cross-validation; `cpcv_paths(origins, n_folds, k_test, embargo)`, `cpcv_skill_distribution(...)` |
+| `pbo.py` | Phase 8: Bailey-Borwein-Lopez de Prado-Zhu Probability of Backtest Overfitting; `probability_of_backtest_overfitting`, `pbo_from_forecasts` |
+| `deflated_sharpe.py` | Phase 8: Deflated Sharpe Ratio; `expected_max_sharpe_under_null`, `deflated_sharpe_ratio` |
+| `romano_wolf.py` | Phase 8: studentized stepdown FWER under arbitrary dependence; `romano_wolf(diff_matrix, alpha, n_bootstrap, block_size)` |
+| `preregistration.py` | Phase 8: hash-committed hypothesis ledger; `PreRegistration`, `register`, `resolve`, `from_hypothesis_dict`, `trial_count` |
+| `holdout_vault.py` | Phase 8: never-touched final test slice; `initialize_vault`, `assert_no_vault_leakage`, `open_vault`, `vault_status` |
+| `bayesian.py` | Phase 12: Normal-Normal hierarchical model; `hierarchical_findings(findings, forecasts)` -> posterior mean/sd/prob_positive/Bayes factor; `posterior_predictive_check` |
+| `counterfactual.py` | Phase 16: per-finding interrogation lenses -- `factor_residualization`, `what_if_perturbation`, `outlier_removal`, `counterfactual_card` |
+| `power.py` | Phase 16: per-cell statistical power -- `cohen_d`, `power_at_alpha`, `min_n_for_power`, `power_grid` |
+| `cli.py` | `autosignalx eval baseline` / `chronos` / `returns` / `pbo` / `vault-init` / `vault-open` / `status` (hardening is exposed under `autosignalx agent harden`) |
 
 ### `forecast/`
 
@@ -355,7 +421,17 @@ ForecastFn = Callable[
 | `self_critique.py` | LLM-as-judge re-evaluation of past findings; verdict ∈ {reinforced, unchanged, weakened, refuted} |
 | `telemetry.py` | `record_call(...)`, `estimate_cost_usd`, `model_prices(model_id)` (env-var override > defaults > fallback), `CallTimer` (wall-clock context manager) |
 | `sessions.py` | `list_sessions`, `session_summary(sid)`, `all_summaries`, `productivity_trend` (cumulative findings + cost) |
-| `cli.py` | `autosignalx agent run [--mode single\|debate]` / `score-traces` / `consolidate` / `self-critique` / `status` |
+| `specialists.py` | Phase 14: 11 specialist roles + `consult_specialist(role, payload, ...)`; system prompts in `SPECIALIST_PROMPTS` |
+| `lab.py` | Phase 14: lab-mode LangGraph; nodes Theorist -> Verifier -> Planner -> Specialist -> Skeptic -> experiment -> Adjudicator -> KG-writer -> [Theorist | END]; `run_lab(max_rounds, ...)` |
+| `verifier.py` | Phase 14: `verify_hypothesis(h)` checks decision_rule + falsifier presence; downgrades for missing predicted_effect |
+| `knowledge_graph.py` | Phase 14: persistent KG; `Node`, `Edge`, `add_node`, `add_edge`, `neighbors`, `query`, `ingest_findings`, `kg_summary`; storage at `reports/agent/kg/{nodes,edges}.jsonl` |
+| `eig.py` | Phase 14: Bayesian-experimental-design proxy; `candidate_eig(forecasts, methods, assets, regimes, findings)`, `coverage_map(...)` returns the cockpit dataframe |
+| `calibration.py` | Phase 15: agent-confidence calibration; `calibration_for_role(findings, survival, role)` -> Brier, ECE, per-bin reliability |
+| `red_team.py` | Phase 15: adversarial attacks; `asset_shuffle_attack`, `time_shift_attack`, `run_red_team(findings, forecasts)`; persists `reports/agent/red_team.jsonl` |
+| `coherence.py` | Phase 15: per-session coherence proxies (`lessons_uptake`, `lineage_branching_factor`, `theme_persistence_entropy`, composite `coherence_score`); persists `reports/agent/coherence.jsonl` |
+| `prompt_optimizer.py` | Phase 15: prompt versioning; `register_prompt(role, text)`, `score_versions(role, trace_quality)`, `best_version(role, trace_quality)` |
+| `eval_suite.py` | Phase 15: orchestrator; `run_eval_suite()` runs calibration + RedTeam + coherence + prompt-version aggregation; persists `reports/agent/eval_summary.json` |
+| `cli.py` | `autosignalx agent run [--mode single\|debate\|lab]` / `score-traces` / `consolidate` / `self-critique` / `harden` / `eval-suite` / `status` |
 
 ## Agent loop
 
@@ -430,7 +506,7 @@ This is a **soft** boundary suitable for trusted (author-controlled) prompts. It
 
 ## Cockpit reader pattern (`app/streamlit_app.py`)
 
-A flat module registering 15 panel render functions in a `PANELS` dict, dispatched by sidebar selection. Every panel is a read-only reader over `reports/`:
+A flat module registering 31 panel render functions in a `PANELS` dict (defined at the end of `app/streamlit_app.py`), dispatched by a sidebar `st.radio`. Every panel is a read-only reader over `reports/` (or `data/cache/` for the Data panel); none of them computes heavy work, expensive computation lives in CLI commands and is persisted to disk.
 
 | Panel | Reads |
 |---|---|
@@ -438,19 +514,33 @@ A flat module registering 15 panel render functions in a `PANELS` dict, dispatch
 | Data | `data/cache/*.parquet` (via `data.cache.cache_status` and `data.loader.load_*_wide`) |
 | Forecast Arena | `reports/ablations/*.parquet` (concat); optionally `reports/regimes/kmeans.parquet` for stratification |
 | Regime Explorer | `reports/regimes/{kmeans,hmm,embeddings}.parquet` |
-| Signal Discovery Lab | `reports/signals/*.parquet` (most recent by mtime) |
+| Signal Discovery Lab | `reports/signals/signal_ranking.parquet` (most recent by mtime) |
 | Cross-Asset Graph | `reports/graph/{edges,centrality}.parquet` |
+| Regime-Conditioned Graph | `reports/graph/per_regime/regime_<id>/{edges,centrality}.parquet` + `regime_sensitivity.parquet` (Phase 6) |
+| Signal Stability | `reports/signals/walk_forward_ranking.parquet` + `signal_stability.parquet` (Phase 6) |
+| Backtest Arena | `reports/backtest/runs/<run_id>/{portfolio_daily,trades,metrics,meta}` (Phase 1) |
+| Custom Study | `data/studies/<name>/study.yaml` + per-study `reports/studies/<name>/` (Phase 2) |
+| Coverage Map | concat ablations + `reports/agent/findings.jsonl` + ledger (via `agent.eig.coverage_map`; Phase 14/16) |
+| Statistical Power | concat ablations + regimes (via `eval.power.power_grid`; Phase 16) |
+| Counterfactual Cards | findings + concat ablations + `data/cache/macro.parquet` (via `eval.counterfactual.counterfactual_card`; Phase 16) |
+| Bayesian Evidence | findings + concat ablations (via `eval.bayesian.hierarchical_findings`; Phase 12) |
+| Specialist Council | `reports/agent/ledger.jsonl` filtered for `step` starting with `specialist:` + `reports/agent/kg/{nodes,edges}.jsonl` (Phase 14) |
+| Pre-Registration | `reports/agent/preregistrations.jsonl` + `preregistration_resolutions.jsonl` (Phase 8) |
+| Holdout Vault | `reports/agent/holdout_vault/{vault,results}.json` (Phase 8) |
+| Agent Calibration | findings + survival (via `agent.calibration.calibration_for_role`; Phase 15) |
+| RedTeam Attacks | `reports/agent/red_team.jsonl` (Phase 15) |
+| Agent Coherence | `reports/agent/coherence.jsonl` (Phase 15) |
 | Agent Console | `reports/agent/ledger.jsonl`, `reports/agent/trace_quality.jsonl` |
 | Auto-Play Replay | `reports/agent/ledger.jsonl` (with `st.session_state` for playback) |
 | Findings | `reports/agent/findings.jsonl` |
 | Lineage | `reports/agent/ledger.jsonl` + `findings.jsonl` (DAG inferred via `lineage.build_lineage`) |
 | Self-Critique | `reports/agent/self_critique.jsonl` |
+| Survival Analysis | `reports/agent/survival.jsonl` (Phase 5/8/12) |
 | Lessons & Memory | `reports/agent/lessons.md` |
 | Telemetry | `reports/agent/telemetry.jsonl` |
 | Sessions | All stores, aggregated by `session_id` via `agent/sessions.py` |
-| Ask the Memory | `reports/agent/ledger.jsonl` + LLM (live mode) or keyword search (replay mode) |
-
-No panel computes heavy work; expensive computation lives in CLI commands and is persisted to `reports/`.
+| Reproducibility | live computed via `autosignalx.reproducibility.reproducibility_badge`; persisted to `reports/reproducibility_badge.json` (Phase 16) |
+| Ask the Memory | corpus index + LLM (Phase 3) |
 
 ## Adding a new layer
 

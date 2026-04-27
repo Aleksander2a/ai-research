@@ -1,9 +1,12 @@
 """AutoSignal-X — Streamlit research cockpit.
 
-15 panels in the sidebar, each a read-only viewer over a typed artifact
-written by one of the system's layers. Every panel includes a standardized
-'About this panel' expander documenting its inputs, operations / algorithms,
-goal, and how to interpret the results."""
+31 panels in the sidebar (5 model layers + agent loop + Phase-1 backtest +
+Phase-2 custom studies + Phase-3 grounded chat + Phases 7/8/12/14/15/16
+research-lab observability). Each panel is a read-only viewer over a typed
+artifact written by one of the system's layers; expensive computation
+lives in CLI commands, the cockpit only visualises persisted state. Every
+panel includes a standardized 'About this panel' expander documenting its
+inputs, operations / algorithms, goal, and how to interpret the results."""
 
 from __future__ import annotations
 
@@ -105,34 +108,60 @@ def render_overview() -> None:
 
     st.subheader("Model layers")
     layer_rows = [
-        ("L1 Forecasting", "Probabilistic point + interval forecasts", "Chronos-2 (multivariate, with covariates) + baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices)"),
-        ("L2 Representation", "Per-timestep latent regime labels", "Contrastive 1D-CNN encoder (16-dim, 60-day windows, triplet loss) + KMeans on embeddings; Gaussian HMM as parallel detector"),
-        ("L3 Reasoning", "Per-regime feature importance", "HistGradientBoostingClassifier per regime + custom permutation importance"),
-        ("L4 Relational", "Cross-asset dependency structure", "GLASSO partial correlations + Granger causality + NetworkX centrality"),
-        ("L5 Agentic", "Hypothesis generation, experimentation, statistical promotion", "LangGraph; debate mode = Theorist (Kimi-K2.6) / Skeptic (GLM-5.1) / Adjudicator (DeepSeek-V4-Pro); 3 ways to author experiments (slice / DSL / sandboxed Python)"),
+        ("L1 Forecasting", "Probabilistic point + interval forecasts", "Chronos-2 (multivariate, with covariates) + classical baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices). Phase 7 adds returns-target baselines (zero_return / mean_return / momentum) and a `target_type ∈ {price, log_return, excess_return, vol, rank}` contract column."),
+        ("L2 Representation", "Per-timestep latent regime labels", "Contrastive 1D-CNN encoder (16-dim, 60-day windows, triplet loss) + KMeans on embeddings; Gaussian HMM as parallel detector."),
+        ("L3 Reasoning", "Per-regime feature importance", "HistGradientBoostingClassifier per regime + custom permutation importance. Phase 6 walk-forward stability layer (per-(regime, feature) mean rank, rank std, top-K share)."),
+        ("L4 Relational", "Cross-asset dependency structure", "GLASSO partial correlations + Granger causality + NetworkX centrality. Phase 6 regime-conditioned variant rebuilds the graph per regime + cross-regime sensitivity."),
+        ("L5 Agentic", "Hypothesis generation, experimentation, statistical promotion", "LangGraph state machine in three modes: `single` (one LLM), `debate` (Theorist/Skeptic/Adjudicator), `lab` (Phase 14: planner → specialist consult → KG writer + 11 specialist roles). Three experiment surfaces: cached-slice, JSON DSL, sandboxed Python."),
     ]
     for name, purpose, impl in layer_rows:
         st.markdown(f"- **{name}** — *{purpose}.*  {impl}")
 
+    st.markdown(
+        "**Statistical methodology.** Promotion gate: Diebold-Mariano (Newey-West HAC) "
+        "+ block-bootstrap CI. Hardening (Phase 5): BH-FDR + adversarial replication "
+        "(full-test / placebo / block-holdout). Selection-bias-aware (Phase 8): "
+        "Combinatorial Purged CV, Probability of Backtest Overfitting, Deflated Sharpe, "
+        "Romano-Wolf stepdown, hash-committed pre-registration ledger, never-touched "
+        "holdout vault. Bayesian (Phase 12): hierarchical Normal-Normal model with "
+        "empirical-Bayes shrinkage, Bayes factors, posterior-predictive checks. The "
+        "strict survival bar (`survives_all_strict`) is the conjunction of every gate."
+    )
+
     st.divider()
-    st.subheader("Cockpit panels (sidebar order)")
+    st.subheader("Cockpit panels (31, in sidebar order)")
     panel_rows = [
-        ("Overview", "This page. System pitch, layer summary, panel index, system status."),
+        ("Overview", "This page. System pitch, model layers, statistical methodology, panel index, inputs/outputs."),
         ("Data", "Cache inventory; ETF and macro time series. Reads `data/cache/*.parquet`."),
         ("Forecast Arena", "Per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands. Reads `reports/ablations/*.parquet`."),
         ("Regime Explorer", "KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime. Reads `reports/regimes/*.parquet`."),
         ("Signal Discovery Lab", "Per-regime feature importance bar chart; ranking table; cross-regime importance heatmap. Reads `reports/signals/signal_ranking.parquet`."),
         ("Cross-Asset Graph", "Centrality table; partial-correlation matrix; top Granger edges. Reads `reports/graph/{edges,centrality}.parquet`."),
-        ("Backtest Arena", "Simulated trading on the test window driven by discovered structure (Phase 1). Equity curves, drawdowns, Sharpe/Sortino/Calmar; strict no-look-ahead. Reads `reports/backtest/runs/<run_id>/`."),
+        ("Regime-Conditioned Graph", "Phase 6: same machinery rebuilt per regime; surfaces hubs and bridges that flip role across regimes; per-asset regime-sensitivity table."),
+        ("Signal Stability", "Phase 6: walk-forward feature-importance rankings; per-(regime, feature) stability metrics; rank-trajectory chart across windows."),
+        ("Backtest Arena", "Phase 1: simulated trading on the test window driven by discovered structure. Equity curves, drawdowns, Sharpe/Sortino/Calmar; paired bootstrap CI on Sharpe-difference vs benchmark; strict no-look-ahead."),
+        ("Custom Study", "Phase 2: form-based per-study workspace (universe / dates / splits). Pre-flight validation + pipeline buttons. Each study has its own `data/studies/<name>/` and `reports/studies/<name>/` tree."),
+        ("Coverage Map", "Phase 14/16: 4D heatmap of (method × asset × regime) coloured by EIG (expected information gain). Reviewer sees exactly where the agent has hunted, what's promoted, what's open."),
+        ("Statistical Power", "Phase 16: per-cell Cohen's d, observed power at α=0.05, sample-size required for 80% power. Distinguishes underpowered failures from genuine nulls."),
+        ("Counterfactual Cards", "Phase 16: per-finding factor residualization (against macro factors), what-if perturbations across prediction-magnitude buckets, outlier-removal stability. Makes the *reasoning* behind each finding interrogable."),
+        ("Bayesian Evidence", "Phase 12: hierarchical Normal-Normal posterior over each finding's true skill. Reports posterior mean / sd, P(θ>0), Bayes factor BF_10 vs the null, posterior predictive intervals."),
+        ("Specialist Council", "Phase 14: multi-role consultation feed (Statistician / Quant / RiskOfficer / Economist / Implementer / RedTeam / Historian); PrincipalInvestigator routing decisions; persistent KG explorer."),
+        ("Pre-Registration", "Phase 8: hash-committed hypothesis ledger. Open / resolved (promoted / refuted) counts. Makes the agent's commitment-before-evidence auditable."),
+        ("Holdout Vault", "Phase 8: never-touched final test slice. Locked / opened state, leakage assertions, one-time evaluation results."),
+        ("Agent Calibration", "Phase 15: reliability diagram of Theorist confidence vs finding-survival rate. Brier score and Expected Calibration Error."),
+        ("RedTeam Attacks", "Phase 15: per-finding asset-shuffle (re-test on every other asset in the same regime) + time-shift attacks (shift forecast_origin by 5 days)."),
+        ("Agent Coherence", "Phase 15: per-session lessons-uptake, lineage branching factor, theme-persistence entropy, composite coherence score across sessions."),
         ("Agent Console", "Chat-style ledger timeline; per-round trace-quality chart at the bottom. Reads `reports/agent/ledger.jsonl`."),
         ("Auto-Play Replay", "Playback controls (play / pause / reset, 0.5x-4x speed) over the ledger."),
-        ("Findings", "Promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; full statistical evidence per card. Reads `reports/agent/findings.jsonl`."),
+        ("Findings", "Promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; full statistical evidence per card."),
         ("Lineage", "Plotly DAG of hypothesis evolution; nodes colored by status (promoted / refuted / open). Inferred via `agent/lineage.py`."),
-        ("Self-Critique", "Agent's verdicts on its own past findings against current evidence. Reads `reports/agent/self_critique.jsonl`."),
-        ("Lessons & Memory", "Accumulating Markdown of consolidated session notes (long-horizon memory). Reads `reports/agent/lessons.md`."),
-        ("Telemetry", "Cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost. Reads `reports/agent/telemetry.jsonl`."),
-        ("Sessions", "Per-session productivity (rounds, findings, cost-per-finding); cumulative trend. Aggregates all stores by `session_id`."),
-        ("Ask the Memory", "Free-form chat against the ledger (LLM in live mode, keyword search in replay mode)."),
+        ("Self-Critique", "Agent's verdicts on its own past findings against current evidence."),
+        ("Survival Analysis", "Phase 5/8/12 hardening grid: BH-FDR + adversarial (full-test / placebo / block-holdout) + Romano-Wolf + Deflated Sharpe + CPCV + Bayesian. The strict bar `survives_all_strict` is the conjunction."),
+        ("Lessons & Memory", "Accumulating Markdown of consolidated session notes (long-horizon memory)."),
+        ("Telemetry", "Cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost."),
+        ("Sessions", "Per-session productivity (rounds, findings, cost-per-finding); cumulative trend. Aggregates by `session_id`."),
+        ("Reproducibility", "Phase 16: git hash + dirty flag, Python env, library versions, replay-mode flag, per-artifact SHA-256, single bundle hash for the current cockpit state."),
+        ("Ask the Memory", "Phase 3: grounded RAG chat over the run corpus (ledger / findings / lessons / trace_quality / self_critique / telemetry / backtests / regime-graph / signal-stability / survival). Cite-or-refuse system prompt; off-corpus questions trigger refusal."),
     ]
     for name, desc in panel_rows:
         st.markdown(f"- **{name}** — {desc}")
@@ -147,17 +176,23 @@ def render_overview() -> None:
             - **yfinance API**: 8 ETFs (SPY, QQQ, IWM, GLD, TLT, EFA, EEM, HYG) + 4 macro signals (^TNX, ^VIX, DX-Y.NYB, CL=F), daily 2010-01-01 → 2025-12-31.
             - **DeepInfra API key** (optional): OpenAI-compatible endpoint for the agent layer. Without a key, the agent runs deterministically against `replay/agent_steps.jsonl`.
             - **`configs/default.yaml`**: date splits, horizon, per-layer hyperparameters.
+            - **Optional study workspace** (`data/studies/<name>/study.yaml`): user-defined universe + date range + walk-forward boundaries (Phase 2).
             """
         )
     with cols[1]:
         st.markdown(
             """
             **Outputs (all under `reports/`)**
-            - `ablations/*.parquet` — per-method walk-forward forecasts.
-            - `regimes/*.parquet` — KMeans + HMM regime labels and embeddings.
-            - `signals/signal_ranking.parquet` — per-regime feature importance.
-            - `graph/{edges,centrality}.parquet` — partial-corr + Granger; centrality.
-            - `agent/{ledger,findings,telemetry,trace_quality,self_critique}.jsonl` — agent state and observability.
+            - `ablations/*.parquet` — per-method walk-forward forecasts (with optional `target_type` from Phase 7).
+            - `regimes/*.parquet` — KMeans + HMM regime labels and contrastive embeddings.
+            - `signals/{signal_ranking,walk_forward_ranking,signal_stability}.parquet` — per-regime feature importance + walk-forward stability summary (Phase 6).
+            - `graph/{edges,centrality}.parquet` + `graph/per_regime/` — global + regime-conditioned cross-asset graph (Phase 6).
+            - `backtest/runs/<run_id>/` — strategy P&L, trades, metrics, paired bootstrap (Phase 1).
+            - `agent/{ledger,findings,telemetry,trace_quality,self_critique,survival}.jsonl` — agent state, evidence, hardening output.
+            - `agent/{preregistrations,preregistration_resolutions,red_team,calibration,coherence}.jsonl` — Phase-8 / Phase-15 artifacts.
+            - `agent/kg/{nodes,edges}.jsonl` — Phase-14 persistent knowledge graph.
+            - `agent/holdout_vault/{vault,results}.json` — Phase-8 final test slice.
+            - `agent/eval_summary.json`, `pbo.json`, `reproducibility_badge.json` — Phase-15 / Phase-16 rollups.
             - `agent/lessons.md` — long-horizon memory.
             - `agent/generated_methods/` — sandboxed Python authored by the agent.
             """
@@ -1877,6 +1912,624 @@ def render_custom_study() -> None:
     )
 
 
+def render_coverage_map() -> None:
+    """Phase 16: hypothesis search-space coverage map."""
+    st.title("Coverage Map")
+    st.caption(
+        "Where has the agent looked? Each cell of (asset × regime × method) is "
+        "colored by status: open / tested / promoted / no-data. EIG ranks the "
+        "highest-information next experiment."
+    )
+
+    _panel_doc(
+        inputs="Concatenated `reports/ablations/*.parquet`, joined to `reports/regimes/kmeans.parquet` for regime labels; `reports/agent/findings.jsonl` for the 'promoted' overlay; `reports/agent/ledger.jsonl` for the 'tested' overlay (parsed by `agent.eig._build_tested_keys_from_ledger`).",
+        operations="Builds a candidate grid over Cartesian product (methods × assets × regimes), computes a Phase-14 EIG proxy = α·novelty + β·sqrt(n_samples) − 0.5·already_tested, and renders the coverage status. The proxy avoids re-testing settled cases.",
+        goal="Make the agent's exploration legible. Reviewers see what's been examined, what hasn't, and where new effort should go.",
+        interpretation="High EIG with `status=open` and `n_samples > 200` is the best next experiment slot. Many `tested` cells without promotion is a sign the slice is genuinely null. `no_data` cells need a forecast pass first.",
+    )
+
+    from autosignalx.agent import eig as eig_mod
+    from autosignalx.agent import findings as findings_mod
+    from autosignalx.agent import tools as tools_mod
+
+    forecasts = tools_mod._load_all_forecasts()
+    if forecasts.empty:
+        st.warning("No forecasts cached. Run `autosignalx eval baseline` first.")
+        return
+    rl_path = settings.reports_dir / "regimes" / "kmeans.parquet"
+    if rl_path.exists() and "forecast_origin" in forecasts.columns:
+        try:
+            rl = pd.read_parquet(rl_path)
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            rl_join["forecast_origin"] = pd.to_datetime(rl_join["forecast_origin"])
+            forecasts["forecast_origin"] = pd.to_datetime(forecasts["forecast_origin"])
+            forecasts = forecasts.merge(rl_join, on="forecast_origin", how="left")
+        except Exception:  # noqa: BLE001
+            pass
+
+    methods = sorted(forecasts["method"].unique())
+    assets = sorted(forecasts["asset"].unique())
+    regimes = (
+        sorted(forecasts["regime_id"].dropna().unique().astype(int).tolist())
+        if "regime_id" in forecasts.columns
+        else []
+    )
+    if not regimes:
+        st.warning("No regime labels available. Run `autosignalx regime fit` first.")
+        return
+    findings_records = findings_mod.load()
+    df = eig_mod.coverage_map(
+        forecasts=forecasts,
+        methods=methods,
+        assets=assets,
+        regimes=regimes,
+        findings=findings_records,
+    )
+    st.subheader("Coverage table")
+    st.caption(
+        f"{len(df)} (method × asset × regime) cells; {sum(df['status']=='promoted')} promoted, "
+        f"{sum(df['status']=='tested')} previously tested, {sum(df['status']=='open')} open."
+    )
+    st.dataframe(df.sort_values("eig_score", ascending=False), use_container_width=True, hide_index=True)
+
+    st.subheader("Coverage heatmap (per method)")
+    method_sel = st.selectbox("Method", methods, index=min(2, len(methods) - 1))
+    sub = df[df["method"] == method_sel]
+    pivot = sub.pivot_table(index="asset", columns="regime_id", values="eig_score")
+    try:
+        import plotly.express as px
+
+        fig = px.imshow(
+            pivot, aspect="auto", color_continuous_scale="Viridis",
+            labels={"color": "EIG score", "x": "regime_id", "y": "asset"},
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:  # noqa: BLE001
+        st.dataframe(pivot)
+
+
+def render_statistical_power() -> None:
+    """Phase 16: per-cell sample-size and power dashboard."""
+    st.title("Statistical Power Dashboard")
+    st.caption(
+        "For every (method, asset, regime) cell, what is the observed effect "
+        "size, the implied power at α=0.05, and the sample size required "
+        "for 80% power? Distinguishes 'under-powered failure' from 'genuine null'."
+    )
+
+    _panel_doc(
+        inputs="Concatenated `reports/ablations/*.parquet` joined to `reports/regimes/kmeans.parquet`.",
+        operations="Per cell: align method vs naive on (timestamp, asset, forecast_origin), compute Cohen's d on per-bar loss differences, approximate one-sided t-test power via noncentral t, and bisect on n for 80% power.",
+        goal="Tell the reviewer whether a non-promotable cell was *underpowered* (n too small) or *genuinely null* (large n with d ≈ 0).",
+        interpretation="Cells with d > 0.1 and power > 0.8 that didn't promote are real failures of the candidate method. Cells with low power are uninformative -- the agent hasn't yet collected enough data to render a verdict.",
+    )
+
+    from autosignalx.agent import tools as tools_mod
+    from autosignalx.eval.power import power_grid
+
+    forecasts = tools_mod._load_all_forecasts()
+    if forecasts.empty:
+        st.warning("No forecasts cached.")
+        return
+    rl_path = settings.reports_dir / "regimes" / "kmeans.parquet"
+    if rl_path.exists() and "forecast_origin" in forecasts.columns:
+        try:
+            rl = pd.read_parquet(rl_path)
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            rl_join["forecast_origin"] = pd.to_datetime(rl_join["forecast_origin"])
+            forecasts["forecast_origin"] = pd.to_datetime(forecasts["forecast_origin"])
+            forecasts = forecasts.merge(rl_join, on="forecast_origin", how="left")
+        except Exception:  # noqa: BLE001
+            pass
+
+    methods = sorted(forecasts["method"].unique())
+    grid = power_grid(forecasts, methods=methods, baseline="naive")
+    if grid.empty:
+        st.warning("Power grid is empty.")
+        return
+
+    cols = st.columns(3)
+    cols[0].metric("Cells", len(grid))
+    cols[1].metric("Mean power", f"{grid['power'].mean():.2f}")
+    cols[2].metric("Mean Cohen d", f"{grid['d'].mean():+.3f}")
+
+    st.subheader("Per-cell power")
+    st.dataframe(
+        grid.sort_values(["method", "asset", "regime_id"]),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.subheader("Power vs effect size (scatter)")
+    try:
+        import plotly.express as px
+
+        fig = px.scatter(
+            grid, x="d", y="power", color="method", size="n",
+            hover_data=["asset", "regime_id"],
+            labels={"d": "Cohen's d", "power": "Power at α=0.05"},
+        )
+        fig.add_hline(y=0.8, line_dash="dash", annotation_text="80% target")
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:  # noqa: BLE001
+        st.write(grid)
+
+
+def render_counterfactual_cards() -> None:
+    """Phase 16: counterfactual interrogation per finding."""
+    st.title("Counterfactual Cards")
+    st.caption(
+        "For every promoted finding: factor-residualised lift (after subtracting "
+        "macro-factor exposure), what-if perturbations across prediction-magnitude "
+        "buckets, and outlier-removal stability."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/findings.jsonl`; concatenated `reports/ablations/*.parquet`; `data/cache/macro.parquet` for the factor regression.",
+        operations="`eval.counterfactual.factor_residualization` regresses per-bar loss-difference on 5-day-diff macro factors and reports the residual mean. `what_if_perturbation` slices by prediction-magnitude quartile. `outlier_removal` drops the top 1% absolute-difference rows and recomputes skill.",
+        goal="Make a finding's evidence interrogable: does the lift survive after subtracting common factor exposure? Is it concentrated in extreme predictions? Is it dominated by a handful of outlier days?",
+        interpretation="If `fraction_explained` is high, the finding is partly a factor bet. If `inlier_skill` collapses below `raw_skill`, the lift is outlier-driven. If both stay positive across what-if buckets, the structure is robust.",
+    )
+
+    from autosignalx.agent import findings as findings_mod
+    from autosignalx.agent import tools as tools_mod
+    from autosignalx.eval.counterfactual import counterfactual_card
+
+    findings_records = findings_mod.load()
+    if not findings_records:
+        st.info("No promoted findings yet.")
+        return
+    forecasts = tools_mod._load_all_forecasts()
+    if forecasts.empty:
+        st.warning("No forecasts cached.")
+        return
+    rl_path = settings.reports_dir / "regimes" / "kmeans.parquet"
+    if rl_path.exists() and "forecast_origin" in forecasts.columns:
+        try:
+            rl = pd.read_parquet(rl_path)
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            rl_join["forecast_origin"] = pd.to_datetime(rl_join["forecast_origin"])
+            forecasts["forecast_origin"] = pd.to_datetime(forecasts["forecast_origin"])
+            forecasts = forecasts.merge(rl_join, on="forecast_origin", how="left")
+        except Exception:  # noqa: BLE001
+            pass
+
+    for f in findings_records:
+        with st.expander(f"**{f.get('id', '?')}** — {(f.get('hypothesis') or '')[:120]}", expanded=False):
+            method = f.get("method")
+            ev = f.get("evidence", {}) or {}
+            baseline = ev.get("baseline_method", "naive")
+            filters = f.get("filters") or {}
+            card = counterfactual_card(
+                forecasts=forecasts, method=method, baseline=baseline,
+                asset=filters.get("asset"), regime_id=filters.get("regime_id"),
+            )
+
+            fr = card.get("factor_residualization", {}) or {}
+            st.markdown("**Factor residualization**")
+            if "reason" in fr:
+                st.caption(f"(skipped: {fr['reason']})")
+            else:
+                cols = st.columns(3)
+                cols[0].metric("Raw mean diff", f"{fr.get('raw_mean_loss_diff', 0):.5f}")
+                cols[1].metric("Residual mean", f"{fr.get('residual_mean_loss_diff', 0):.5f}")
+                cols[2].metric("Fraction explained", f"{fr.get('fraction_explained', 0):.1%}")
+                st.caption(f"t_residual = {fr.get('t_residual', 0):.2f}, p_residual = {fr.get('p_residual', 0):.3f}")
+                st.json(fr.get("factor_betas", {}))
+
+            wi = card.get("what_if", {}) or {}
+            st.markdown("**What-if (per prediction-magnitude bucket)**")
+            buckets = wi.get("buckets", [])
+            if buckets:
+                st.dataframe(pd.DataFrame(buckets), use_container_width=True, hide_index=True)
+
+            ol = card.get("outlier_removal", {}) or {}
+            st.markdown("**Outlier removal**")
+            if "reason" in ol:
+                st.caption(f"(skipped: {ol['reason']})")
+            else:
+                cols = st.columns(2)
+                cols[0].metric("Raw skill", f"{ol.get('raw_skill_vs_baseline', 0):+.4f}")
+                cols[1].metric("Inlier skill", f"{ol.get('inlier_skill_vs_baseline', 0):+.4f}")
+                st.caption(
+                    f"Dropped top {(1 - ol.get('cutoff_quantile', 1.0)) * 100:.0f}% absolute-diff rows; "
+                    f"n_total={ol.get('n_total')} -> n_inlier={ol.get('n_inlier')}."
+                )
+
+
+def render_bayesian_evidence() -> None:
+    """Phase 12 + 16: hierarchical Bayesian posterior + Bayes factors."""
+    st.title("Bayesian Evidence")
+    st.caption(
+        "Per-finding posterior over the true skill (Normal-Normal hierarchical "
+        "model with empirical-Bayes shrinkage), Bayes factor vs the null, and "
+        "posterior-predictive intervals."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/findings.jsonl`; concatenated `reports/ablations/*.parquet` joined to `reports/regimes/kmeans.parquet`.",
+        operations="`eval.bayesian.hierarchical_findings` fits a Normal-Normal hierarchical model: d_i ~ N(theta_i, sigma_i^2/n_i), theta_i ~ N(mu, tau^2), with mu and tau^2 fit by method of moments. Reports posterior mean, sd, P(theta>0), Bayes factor BF_10 vs theta=0.",
+        goal="Provide decision-relevant evidence the frequentist DM gate doesn't expose. Bayes factors directly answer 'how much should I update?'; posterior P(theta>0) gives a calibrated probability statement.",
+        interpretation="BF > 10 = 'strong evidence' for the alternative; BF > 30 = 'very strong'; BF < 1 = data favours the null. P(theta>0) > 0.95 plus BF > 10 is the lab-grade Bayesian bar.",
+    )
+
+    from autosignalx.agent import findings as findings_mod
+    from autosignalx.agent import tools as tools_mod
+    from autosignalx.eval.bayesian import hierarchical_findings, posterior_predictive_check
+
+    findings_records = findings_mod.load()
+    if not findings_records:
+        st.info("No promoted findings yet.")
+        return
+    forecasts = tools_mod._load_all_forecasts()
+    if forecasts.empty:
+        st.warning("No forecasts cached.")
+        return
+    rl_path = settings.reports_dir / "regimes" / "kmeans.parquet"
+    if rl_path.exists() and "forecast_origin" in forecasts.columns:
+        try:
+            rl = pd.read_parquet(rl_path)
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            rl_join["forecast_origin"] = pd.to_datetime(rl_join["forecast_origin"])
+            forecasts["forecast_origin"] = pd.to_datetime(forecasts["forecast_origin"])
+            forecasts = forecasts.merge(rl_join, on="forecast_origin", how="left")
+        except Exception:  # noqa: BLE001
+            pass
+
+    summary = hierarchical_findings(findings_records, forecasts)
+    if summary.n_findings == 0:
+        st.info("Not enough aligned data for Bayesian inference yet.")
+        return
+
+    cols = st.columns(3)
+    cols[0].metric("Findings", summary.n_findings)
+    cols[1].metric("Population mean μ", f"{summary.mu_pop:.5f}")
+    cols[2].metric("Population variance τ²", f"{summary.tau2_pop:.6f}")
+
+    rows = []
+    for bf in summary.findings:
+        rows.append({
+            "id": bf.finding_id,
+            "n": bf.n,
+            "data_mean": bf.d_mean,
+            "posterior_mean": bf.posterior_mean,
+            "posterior_sd": bf.posterior_sd,
+            "P(θ>0)": bf.prob_positive,
+            "Bayes factor (BF_10)": bf.bayes_factor,
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    if st.button("Run posterior predictive check"):
+        ppc = posterior_predictive_check(findings_records, forecasts, n_simulations=500)
+        st.json(ppc)
+
+
+def render_specialist_council() -> None:
+    """Phase 14 + 16: specialist consultations and KG explorer."""
+    st.title("Specialist Council")
+    st.caption(
+        "Multi-role consultation feed (Statistician / Quant / RiskOfficer / "
+        "Economist / Implementer / RedTeam / Historian) and the persistent "
+        "knowledge-graph explorer."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl` filtered for `step` starting with `specialist:`; `reports/agent/kg/{nodes,edges}.jsonl`.",
+        operations="Filters the ledger for specialist consultations and groups by role. Loads the KG nodes/edges and renders kind / relation distributions plus a node search.",
+        goal="Make Phase-14's multi-specialist debate visible and the persistent KG queryable from the cockpit.",
+        interpretation="Each specialist's consultation is one LLM call recorded in the ledger; their advice frames the Adjudicator's verdict. The KG accumulates structural knowledge across sessions: nodes by kind, edges by relation, and a search box for 'what's been said about regime 3 / TLT / chronos2_multivariate'.",
+    )
+
+    from autosignalx.agent import knowledge_graph as kg_mod
+    from autosignalx.agent import ledger as ledger_mod
+
+    entries = ledger_mod.load()
+    consult_entries = [e for e in entries if str(e.get("step", "")).startswith("specialist:")]
+    pi_entries = [e for e in entries if e.get("step") == "principal_investigator"]
+    st.subheader("Recent specialist consultations")
+    if not consult_entries:
+        st.info(
+            "No specialist consults yet. Run `autosignalx agent run --mode lab` "
+            "to invoke the Phase-14 multi-specialist orchestration."
+        )
+    else:
+        cols = st.columns(2)
+        with cols[0]:
+            roles = sorted({str(e.get("step", "")).split(":")[1] for e in consult_entries})
+            role_pick = st.selectbox("Role filter", ["(all)"] + roles)
+        with cols[1]:
+            n_show = st.slider("Show last N", min_value=5, max_value=200, value=30)
+        sub = consult_entries
+        if role_pick != "(all)":
+            sub = [e for e in consult_entries if e.get("step") == f"specialist:{role_pick}"]
+        for e in sub[-n_show:]:
+            with st.expander(
+                f"R{e.get('round')} · {e.get('step')} · {(e.get('content') or '')[:80]}",
+                expanded=False,
+            ):
+                st.write(e.get("content"))
+
+    if pi_entries:
+        with st.expander("PrincipalInvestigator decisions", expanded=False):
+            st.dataframe(
+                pd.DataFrame([
+                    {
+                        "round": e.get("round"),
+                        "next_specialist": (e.get("content") or {}).get("next_specialist"),
+                        "rationale": (e.get("content") or {}).get("rationale"),
+                    }
+                    for e in pi_entries
+                ]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.divider()
+    st.subheader("Knowledge graph")
+    summary = kg_mod.kg_summary()
+    cols = st.columns(2)
+    cols[0].metric("Nodes", summary.get("n_nodes", 0))
+    cols[1].metric("Edges", summary.get("n_edges", 0))
+    if summary.get("n_nodes", 0) > 0:
+        st.write("**Nodes by kind:**", summary.get("nodes_by_kind", {}))
+        st.write("**Edges by relation:**", summary.get("edges_by_relation", {}))
+        kind = st.selectbox("Filter nodes by kind", ["(any)"] + list(summary.get("nodes_by_kind", {}).keys()))
+        needle = st.text_input("Label contains", "")
+        nodes = kg_mod.query(
+            kind=None if kind == "(any)" else kind,
+            label_contains=needle or None,
+        )
+        st.dataframe(pd.DataFrame(nodes)[:200], use_container_width=True, hide_index=True)
+    else:
+        st.info("KG empty. Run `autosignalx agent run --mode lab` to ingest findings into the KG.")
+
+
+def render_preregistration() -> None:
+    """Phase 8 + 16: pre-registration ledger."""
+    st.title("Pre-Registration")
+    st.caption(
+        "Hypotheses hash-committed BEFORE running. Open registrations are the "
+        "agent's outstanding tests; resolved registrations link a registered "
+        "hypothesis to its eventual evidence."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/preregistrations.jsonl` (registrations) and `reports/agent/preregistration_resolutions.jsonl` (resolutions).",
+        operations="Loads both files via `eval.preregistration.load` / `load_resolutions`, joins on `id`, surfaces open vs resolved.",
+        goal="Make the agent's commitment-before-evidence auditable. The ratio resolved / open is a coverage-of-obligation metric.",
+        interpretation="A registered hypothesis whose resolution is `promoted=True` is one that survived the gate as predicted. Registered without resolution = open obligation. Resolved with `promoted=False` = honest negative result.",
+    )
+
+    from autosignalx.eval.preregistration import load, load_resolutions
+
+    regs = load()
+    resols = load_resolutions()
+    by_id = {r.get("preregistration_id"): r for r in resols}
+
+    cols = st.columns(3)
+    cols[0].metric("Registered", len(regs))
+    cols[1].metric("Resolved", len(by_id))
+    cols[2].metric("Open", len(regs) - len(by_id))
+
+    rows = []
+    for r in regs:
+        res = by_id.get(r.get("id"))
+        rows.append({
+            "id": r.get("id"),
+            "method": r.get("method"),
+            "filters": r.get("filters"),
+            "registered_at": r.get("registered_at"),
+            "status": "open" if res is None else ("promoted" if res.get("promoted") else "refuted"),
+            "p_value": (res or {}).get("evidence", {}).get("p_value"),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def render_holdout_vault() -> None:
+    """Phase 8 + 16: holdout vault status."""
+    st.title("Holdout Vault")
+    st.caption(
+        "Never-touched final test slice. Reviewers see whether the vault is "
+        "locked, whether discovery has accidentally consulted it, and (after "
+        "explicit open) the final headline metric."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/holdout_vault/{vault.json,results.json}`.",
+        operations="`eval.holdout_vault.vault_status` reports lock state and bounds. `assert_no_vault_leakage` raises if any forecast row's `forecast_origin` falls inside the locked range -- intended to be wired into the agent's experiment node.",
+        goal="Distinguish the discovery phase (forbidden inside the vault) from the publication phase (one-time vault open).",
+        interpretation="A locked vault with a non-zero lock-hash and zero leakage events is a healthy state. After publication, `vault.json` records `opened: True` and `results.json` carries the headline numbers — a one-time, unalterable record.",
+    )
+
+    from autosignalx.eval.holdout_vault import VAULT_RESULTS, vault_status
+
+    s = vault_status()
+    if not s.get("initialized"):
+        st.info(
+            "Vault not initialized. Run `autosignalx eval vault-init <start> <end>` "
+            "to lock a final test slice before publication."
+        )
+        return
+    cols = st.columns(3)
+    cols[0].metric("Start", s.get("start"))
+    cols[1].metric("End", s.get("end"))
+    cols[2].metric("Status", "OPENED" if s.get("opened") else "LOCKED")
+    st.caption(f"Lock hash: `{s.get('lock_hash')}` (locked at {s.get('locked_at')})")
+    if s.get("opened") and VAULT_RESULTS.exists():
+        st.subheader("Vault evaluation (final headline numbers)")
+        st.json(json.loads(VAULT_RESULTS.read_text(encoding="utf-8")))
+
+
+def render_calibration_panel() -> None:
+    """Phase 15 + 16: agent confidence calibration."""
+    st.title("Agent Calibration")
+    st.caption(
+        "Reliability diagram of the agent's predicted confidence vs the survival "
+        "rate of its findings. Brier score and ECE summarise how well-calibrated "
+        "the agent's intuition is."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/findings.jsonl` (predicted_effect / agent_confidence) and `reports/agent/survival.jsonl` (survives_all_strict).",
+        operations="`agent.calibration.calibration_for_role` coerces confidence (numeric or text) to [0,1], bins predictions, and reports per-bin observed-survival rate plus Brier score and ECE.",
+        goal="Score the Theorist's calibration over time. A well-calibrated agent's 0.8-confidence findings should survive hardening 80% of the time.",
+        interpretation="Brier closer to 0 = better; ECE closer to 0 = bins agree with their predictions; the reliability curve should sit on the y=x identity. Consistent over-confidence (curve below y=x) is a sign the Theorist's prompt should be retuned.",
+    )
+
+    from autosignalx.agent import calibration as calibration_mod
+    from autosignalx.agent import findings as findings_mod
+    from autosignalx.eval.survival import load_survival
+
+    findings_records = findings_mod.load()
+    survival = load_survival()
+    if not findings_records or not survival:
+        st.info("Need at least one promoted finding plus its survival record.")
+        return
+
+    rec = calibration_mod.calibration_for_role(
+        findings=findings_records,
+        survival_records=survival,
+        role="theorist",
+    )
+    cols = st.columns(3)
+    cols[0].metric("N", rec.n)
+    cols[1].metric("Brier score", f"{rec.brier:.3f}")
+    cols[2].metric("ECE", f"{rec.ece:.3f}")
+    if rec.bins:
+        st.subheader("Reliability bins")
+        st.dataframe(pd.DataFrame(rec.bins), use_container_width=True, hide_index=True)
+
+        try:
+            import plotly.graph_objects as go
+
+            xs = [b.get("mean_confidence") for b in rec.bins if b.get("mean_confidence") is not None]
+            ys = [b.get("obs_rate") for b in rec.bins if b.get("obs_rate") is not None]
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=xs, y=ys, mode="markers+lines", name="Observed"))
+            fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Perfect", line={"dash": "dash"}))
+            fig.update_layout(xaxis_title="Predicted confidence", yaxis_title="Observed survival rate")
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def render_red_team_panel() -> None:
+    """Phase 15 + 16: RedTeam attack outcomes."""
+    st.title("RedTeam Attacks")
+    st.caption(
+        "Per-finding asset-shuffle and time-shift adversarial attacks beyond "
+        "the existing FDR / full-test / placebo / block-holdout suite."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/red_team.jsonl` produced by `autosignalx agent eval-suite`.",
+        operations="Asset-shuffle: re-run the gate on every other asset in the same regime; finding survives iff no other asset is also promotable. Time-shift: shift forecast_origin by 5 days; finding survives the shift if the lift wasn't a date-specific coincidence.",
+        goal="Catch findings the existing hardening misses: asset-non-specific lifts and date-coincidence artefacts.",
+        interpretation="If a finding is `promotable_elsewhere=[…]`, the regime alone explains the lift -- the asset specificity was spurious. If `promotable_after_shift=False` and original is True, the lift may have been driven by a single date.",
+    )
+
+    from autosignalx.agent.red_team import load_red_team
+
+    records = load_red_team()
+    if not records:
+        st.info(
+            "No RedTeam records yet. Run `autosignalx agent eval-suite` to "
+            "generate them."
+        )
+        return
+    rows = []
+    for r in records:
+        a = r.get("asset_shuffle", {}) or {}
+        t = r.get("time_shift", {}) or {}
+        rows.append({
+            "finding_id": r.get("finding_id"),
+            "asset_shuffle_survives": a.get("survives"),
+            "promotable_elsewhere": a.get("promotable_elsewhere"),
+            "time_shift_promotable": t.get("promotable_after_shift"),
+            "time_shift_skill": t.get("skill"),
+            "survives_red_team": r.get("survives_red_team"),
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def render_coherence_panel() -> None:
+    """Phase 15 + 16: long-horizon agent coherence."""
+    st.title("Agent Coherence")
+    st.caption(
+        "Per-session coherence proxies: lessons uptake, lineage branching factor, "
+        "theme persistence entropy, composite coherence score."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/ledger.jsonl`, `reports/agent/lessons.md`, plus the lineage DAG built from the ledger.",
+        operations="`agent.coherence.score_session` computes lessons-uptake (substring match against prior lessons), lineage branching factor (mean out-degree), and Shannon entropy of (asset, regime) cells visited.",
+        goal="Make multi-session research arc coherence visible -- did each session build on prior lessons or drift?",
+        interpretation="High lessons_uptake means later sessions cite earlier insight. Branching factor near 1 is healthy; very high = scattered, very low = no refinement. Entropy ~ ln(distinct cells visited): too low = stuck on one slice; too high = no focus.",
+    )
+
+    from autosignalx.agent.coherence import load_coherence
+
+    records = load_coherence()
+    if not records:
+        st.info(
+            "No coherence records yet. Run `autosignalx agent eval-suite` to "
+            "score every session in the ledger."
+        )
+        return
+    df = pd.DataFrame(records)
+    if "evaluated_at" in df.columns:
+        df = df.sort_values("evaluated_at")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+    if "coherence_score" in df.columns and len(df) > 1:
+        try:
+            import plotly.express as px
+
+            fig = px.line(df, x="evaluated_at", y="coherence_score",
+                          color="session_id", markers=True)
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def render_reproducibility_panel() -> None:
+    """Phase 16: reproducibility badge."""
+    st.title("Reproducibility Badge")
+    st.caption(
+        "Git hash, Python env, key library versions, replay-mode flag, and "
+        "content hashes of every parquet/JSONL artifact under `reports/`. "
+        "Bundle hash is the deterministic identifier for the current state."
+    )
+
+    _panel_doc(
+        inputs="Live computed: `git rev-parse`, `git status --porcelain`, package metadata, `reports/` artifact bytes.",
+        operations="`autosignalx.reproducibility.reproducibility_badge` collects git+env+per-file SHA-256 hashes, then derives a single artifacts_bundle_hash from the sorted file map.",
+        goal="Make any cockpit screenshot or finding citation reproducible: paste the bundle hash and the reader can verify the same state.",
+        interpretation="If git is `dirty`, the displayed numbers may include uncommitted changes. The bundle hash changes whenever any artifact changes -- it is the cryptographic fingerprint of 'what the cockpit is currently showing'.",
+    )
+
+    from autosignalx.reproducibility import reproducibility_badge, write_badge
+
+    if st.button("Compute / refresh badge"):
+        path = write_badge()
+        st.success(f"Wrote {path}")
+
+    badge = reproducibility_badge()
+    cols = st.columns(3)
+    cols[0].metric("Bundle hash", badge.get("artifacts_bundle_hash", "?"))
+    cols[1].metric("Artifacts", badge.get("n_artifacts", 0))
+    cols[2].metric("Replay mode", str(badge.get("replay_mode", False)))
+    st.subheader("Git")
+    st.json(badge.get("git", {}))
+    st.subheader("Environment")
+    st.json(badge.get("env", {}))
+    with st.expander("Artifact hashes"):
+        rows = [
+            {"path": k, "sha256_16": v}
+            for k, v in (badge.get("artifact_hashes") or {}).items()
+        ]
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 PANELS = {
     "Overview": render_overview,
     "Data": render_data,
@@ -1888,6 +2541,16 @@ PANELS = {
     "Signal Stability": render_signal_stability,
     "Backtest Arena": render_backtest_arena,
     "Custom Study": render_custom_study,
+    "Coverage Map": render_coverage_map,
+    "Statistical Power": render_statistical_power,
+    "Counterfactual Cards": render_counterfactual_cards,
+    "Bayesian Evidence": render_bayesian_evidence,
+    "Specialist Council": render_specialist_council,
+    "Pre-Registration": render_preregistration,
+    "Holdout Vault": render_holdout_vault,
+    "Agent Calibration": render_calibration_panel,
+    "RedTeam Attacks": render_red_team_panel,
+    "Agent Coherence": render_coherence_panel,
     "Agent Console": render_agent_console,
     "Auto-Play Replay": render_auto_play,
     "Findings": render_findings,
@@ -1897,6 +2560,7 @@ PANELS = {
     "Lessons & Memory": render_lessons,
     "Telemetry": render_telemetry,
     "Sessions": render_sessions,
+    "Reproducibility": render_reproducibility_panel,
     "Ask the Memory": render_ask_the_memory,
 }
 

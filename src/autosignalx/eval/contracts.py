@@ -23,7 +23,26 @@ FORECAST_COLUMNS_OPTIONAL: tuple[str, ...] = (
     "lower",            # interval lower bound (None for point-only)
     "upper",            # interval upper bound (None for point-only)
     "regime_id",        # regime label (filled in Iter 4+)
+    "target_type",      # Phase 7: price | log_return | excess_return | vol | rank
 )
+
+
+def get_target_type(df: pd.DataFrame) -> str:
+    """Return the target_type for a forecast frame, defaulting to ``price``.
+
+    Phase 7 contract extension: forecast frames may carry a ``target_type``
+    column declaring the units of ``prediction`` and ``target``. Frames
+    without the column are interpreted as price-level (legacy behaviour)."""
+    if "target_type" not in df.columns or df["target_type"].isna().all():
+        return "price"
+    vals = df["target_type"].dropna().unique()
+    if len(vals) == 0:
+        return "price"
+    if len(vals) > 1:
+        raise ValueError(
+            f"Forecast frame has heterogeneous target_type values: {sorted(vals)}"
+        )
+    return str(vals[0])
 
 
 def assert_forecast_schema(df: pd.DataFrame) -> None:

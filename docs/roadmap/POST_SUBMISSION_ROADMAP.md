@@ -3,8 +3,10 @@
 **Audience.** Future-Claude (and the user) returning to this repo after the
 Deeter submission. This is a working reference, not a marketing doc.
 
-**Status.** Submission shipped on `main` at `dbfc118`. Four follow-on phases
-planned. Phase 1 is the active phase.
+**Status.** Submission shipped on `main` at `dbfc118`. Phases 1-6 merged.
+Phases 7, 8, 12, 14, 15, 16 implemented in branch
+`claude/mystifying-wing-8bd66f` (covers research-lab-grade methodology +
+specialist agent + cockpit observability).
 
 **Hard rules that survive into every phase:**
 
@@ -23,7 +25,114 @@ planned. Phase 1 is the active phase.
 
 ---
 
-## Phase 1 — Backtested simulation (active)
+## Phases 7-8-12-14-15-16 (research-lab grade)
+
+These phases lift the project from "rigorous research instrument" to
+"research-lab-grade autonomous discovery engine". Implementation lives in
+branch `claude/mystifying-wing-8bd66f`.
+
+### Phase 7 — Returns-target forecast contract
+
+* `eval/contracts.py` extended with optional `target_type` column
+  (`price | log_return | excess_return | vol | rank`); legacy parquets
+  default to `price`.
+* `eval/targets.py` adapters: `to_log_return`, `to_excess_return` (^TNX
+  proxy for `rf_daily`), `to_realized_vol`, `to_cross_sectional_rank`,
+  `convert_target` dispatch.
+* `forecast/returns_baselines.py`: `zero_return`, `mean_return`,
+  `momentum` baselines (returns-native).
+* `eval/metrics_returns.py`: `forecast_sharpe`, `hit_rate_returns`,
+  `ic_pearson`, `ic_spearman`, `summarise_returns`.
+* CLI: `autosignalx eval returns --target log_return`.
+* Backward-compatible: existing pipelines untouched.
+
+### Phase 8 — Selection-bias-aware evaluation
+
+* `eval/cpcv.py`: combinatorial purged cross-validation with embargo
+  (Lopez de Prado).
+* `eval/pbo.py`: Probability of Backtest Overfitting (Bailey, Borwein,
+  Lopez de Prado, Zhu, 2014).
+* `eval/deflated_sharpe.py`: DSR with closed-form expected-max-Sharpe
+  null.
+* `eval/romano_wolf.py`: studentized stepdown FWER under arbitrary
+  dependence.
+* `eval/preregistration.py`: hash-committed hypothesis ledger with
+  resolutions append-only.
+* `eval/holdout_vault.py`: never-touched final test slice;
+  `assert_no_vault_leakage` raises; `open_vault` is one-time.
+* CLI: `autosignalx eval pbo`, `eval vault-init`, `eval vault-open`.
+* `survival.jsonl` augmented with `cpcv`, `rw_q`, `survives_rw`,
+  `deflated_sharpe`, `survives_dsr`, `survives_all_strict`.
+
+### Phase 12 — Hierarchical Bayesian evidence
+
+* `eval/bayesian.py`: Normal-Normal hierarchical model with
+  empirical-Bayes hyperparameters; per-finding posterior mean / sd /
+  P(theta>0) / Bayes factor BF_10. No NumPyro/PyMC dependency required.
+* Plumbed through `survival.jsonl` as `bayesian` field +
+  `survives_bayes` flag (BF >= 10 and P(theta>0) >= 0.95).
+* `posterior_predictive_check` simulates next-session loss differences.
+
+### Phase 14 — Specialist agent lab
+
+* `agent/specialists.py`: 11 roles
+  (PrincipalInvestigator, Theorist, Skeptic, Adjudicator, Statistician,
+  Quant, RiskOfficer, Economist, Implementer, RedTeam, Historian).
+* `agent/lab.py`: lab-mode LangGraph
+  (Theorist -> Verifier -> Planner -> Specialist -> Skeptic ->
+  experiment -> Adjudicator -> KG-writer).
+* `agent/verifier.py`: pre-registration check on every hypothesis.
+* `agent/knowledge_graph.py`: persistent KG (nodes + edges as JSONL);
+  idempotent `ingest_findings`.
+* `agent/eig.py`: Bayesian-experimental-design proxy + `coverage_map`
+  for the cockpit.
+* CLI: `autosignalx agent run --mode lab --specialists ...`.
+
+### Phase 15 — Agent self-improvement and evals
+
+* `agent/calibration.py`: Brier + ECE + reliability bins for confidence
+  vs survival.
+* `agent/red_team.py`: asset-shuffle + time-shift attacks beyond Phase
+  5; persists `red_team.jsonl`.
+* `agent/coherence.py`: lessons_uptake + lineage_branching_factor +
+  theme_persistence_entropy + composite coherence_score; persists
+  `coherence.jsonl`.
+* `agent/prompt_optimizer.py`: per-role prompt versioning + scoring
+  against trace_quality rubrics.
+* `agent/eval_suite.py`: orchestrator; CLI `autosignalx agent eval-suite`.
+
+### Phase 16 — Cockpit observability and explainability
+
+Eleven new panels:
+
+* **Coverage Map** -- 4D heatmap of (method × asset × regime) coloured
+  by EIG.
+* **Statistical Power** -- per-cell Cohen's d / power / required-n via
+  `eval/power.py`.
+* **Counterfactual Cards** -- factor residualization + what-if +
+  outlier-removal via `eval/counterfactual.py`.
+* **Bayesian Evidence** -- posterior + Bayes factors view of Phase 12.
+* **Specialist Council** -- multi-role consultation feed + KG explorer.
+* **Pre-Registration** -- registered / open / resolved hypotheses.
+* **Holdout Vault** -- lock status + one-time-eval results.
+* **Agent Calibration** -- reliability diagram for the Theorist.
+* **RedTeam Attacks** -- asset-shuffle + time-shift verdicts.
+* **Agent Coherence** -- per-session coherence trends.
+* **Reproducibility** -- git + env + per-artifact SHA-256 + bundle hash
+  via `autosignalx/reproducibility.py`.
+
+All panels read existing artifacts; none re-train. Cockpit registration
+via `PANELS` dict in `app/streamlit_app.py`.
+
+---
+
+## Phase 1 — Backtested simulation (SHIPPED)
+
+> Status: shipped. Full implementation in `src/autosignalx/backtest/`; cockpit
+> panel **Backtest Arena** is live; results documented in REPORT.md
+> ("Backtested simulation" section). The notes below preserve the original
+> design rationale for future-Claude.
+
 
 ### Goal
 
@@ -177,7 +286,7 @@ result = run_backtest(
 
 ---
 
-## Phase 2 — User-provided inputs
+## Phase 2 — User-provided inputs (SHIPPED)
 
 ### Goal
 
@@ -237,7 +346,7 @@ Two surfaces, same underlying mechanism:
 
 ---
 
-## Phase 3 — Conversational explainability
+## Phase 3 — Conversational explainability (SHIPPED)
 
 ### Goal
 
@@ -298,7 +407,7 @@ Standard RAG with project-specific guardrails:
 
 ---
 
-## Phase 4 — Demo and deployment
+## Phase 4 — Demo and deployment (SHIPPED)
 
 ### Goal
 

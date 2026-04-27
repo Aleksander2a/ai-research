@@ -245,6 +245,223 @@ def chronos_cmd(
     console.print(table)
 
 
+@eval_app.command("returns")
+def returns_cmd(
+    config: str = typer.Option("default", help="Config name under configs/."),
+    study: str = typer.Option("", help="Study name (overrides --config)."),
+    test_end: str = typer.Option("", help="Override test_end (YYYY-MM-DD)."),
+    methods: str = typer.Option(
+        "zero_return,mean_return,momentum",
+        help="Comma-separated subset of: zero_return, mean_return, momentum.",
+    ),
+    target: str = typer.Option(
+        "log_return",
+        help="Target type: log_return | excess_return | rank.",
+    ),
+    output: str = typer.Option(
+        "returns_baseline.parquet",
+        help="Filename under reports/ablations/.",
+    ),
+) -> None:
+    """Phase 7: run a returns-target ablation.
+
+    Produces price-level forecasts via simple returns-style baselines,
+    then converts to the requested return-type before persisting. Cockpit
+    panels can filter by ``target_type`` to stratify rigorous returns
+    findings from price-level findings."""
+    from autosignalx.eval import targets as targets_mod
+    from autosignalx.forecast import returns_baselines
+
+    cache_root, splits_cfg, eval_cfg, test_end_value = _resolve_eval_inputs(
+        study, config, test_end
+    )
+    method_map = {
+        "zero_return": returns_baselines.zero_return_forecast,
+        "mean_return": returns_baselines.mean_return_forecast,
+        "momentum": returns_baselines.momentum_forecast,
+    }
+    selected = {n: method_map[n] for n in methods.split(",") if n in method_map}
+    if not selected:
+        raise typer.BadParameter(f"No valid methods in {methods!r}")
+
+    if target not in targets_mod.VALID_TARGET_TYPES:
+        raise typer.BadParameter(
+            f"target must be one of {targets_mod.VALID_TARGET_TYPES}"
+        )
+
+    ohlcv = cache.read_ohlcv(cache_root=cache_root)
+    windows = splits.walk_forward_windows(
+        val_end=splits_cfg["val_end"],
+        test_end=test_end_value,
+        horizon_days=eval_cfg["forecast_horizon_days"],
+        step_days=eval_cfg["rolling_step_days"],
+    )
+    label = f"study={study}" if study else f"config={config}"
+    console.print(
+        f"Phase-7 returns ablation: {len(selected)} method(s), target={target} ({label}); "
+        f"{len(windows)} windows x {ohlcv['asset'].nunique()} assets..."
+    )
+    price_forecasts = harness.ablation(selected, ohlcv, windows)
+    if price_forecasts.empty:
+        console.print("[yellow]No forecasts produced.[/yellow]")
+        raise typer.Exit(code=1)
+
+    converted = targets_mod.convert_target(price_forecasts, target_type=target, ohlcv=ohlcv)
+    if converted.empty:
+        console.print(
+            "[yellow]Target conversion produced an empty frame "
+            "(insufficient data for vol/rank/excess?).[/yellow]"
+        )
+        raise typer.Exit(code=1)
+
+    out_path = _ensure_ablations_dir(study) / output
+    converted.to_parquet(out_path, index=False)
+    console.print(f"  wrote {len(converted):>7,} {target} forecast rows -> {out_path}")
+
+    from autosignalx.eval.metrics_returns import summarise_returns
+
+    summary = summarise_returns(converted, by=["method"])
+    table = Table(
+        title=f"Per-method overall ({target} target)",
+        show_lines=False,
+        header_style="bold",
+    )
+    table.add_column("Method", style="cyan")
+    table.add_column("N", justify="right")
+    table.add_column("MAE", justify="right")
+    table.add_column("Hit-rate", justify="right")
+    table.add_column("Sharpe", justify="right")
+    table.add_column("IC (Pearson)", justify="right")
+    table.add_column("IC (Spearman)", justify="right")
+    for _, row in summary.iterrows():
+        table.add_row(
+            str(row["method"]),
+            f"{int(row['n']):,}",
+            f"{row['mae']:.5f}",
+            _fmt_value(row.get("hit_rate")),
+            _fmt_value(row.get("forecast_sharpe")),
+            _fmt_value(row.get("ic_pearson")),
+            _fmt_value(row.get("ic_spearman")),
+        )
+    console.print(table)
+
+
+@eval_app.command("pbo")
+def pbo_cmd(
+    methods: str = typer.Option(
+        "",
+        help="Comma-separated method names to include in the PBO matrix; "
+        "default = every non-naive method in the cache.",
+    ),
+    baseline: str = typer.Option("naive", help="Baseline method."),
+    s: int = typer.Option(16, help="Sub-period count for combinatorial split."),
+) -> None:
+    """Phase 8: Probability of Backtest Overfitting across cached methods."""
+    from autosignalx.eval.pbo import pbo_from_forecasts
+
+    abl_dir = settings.reports_dir / "ablations"
+    if not abl_dir.exists():
+        console.print("[yellow]No ablations cached.[/yellow]")
+        raise typer.Exit(code=1)
+    import pandas as pd
+
+    frames = []
+    for fp in abl_dir.glob("*.parquet"):
+        try:
+            frames.append(pd.read_parquet(fp))
+        except Exception:  # noqa: BLE001
+            continue
+    if not frames:
+        console.print("[yellow]No ablations cached.[/yellow]")
+        raise typer.Exit(code=1)
+    forecasts = pd.concat(frames, ignore_index=True)
+    if methods:
+        method_list = [m.strip() for m in methods.split(",") if m.strip()]
+    else:
+        method_list = sorted(forecasts["method"].unique())
+    res = pbo_from_forecasts(forecasts, methods=method_list, baseline=baseline, s=s)
+    console.print(
+        f"PBO over {res.n_strategies} strategies x {res.n_periods} periods, "
+        f"{res.n_combinations} combinatorial splits: [bold]{res.pbo:.3f}[/bold]"
+    )
+    if res.pbo > 0.5:
+        console.print(
+            "[red]>0.5: IS-best ranking has worse-than-random OOS predictive power; "
+            "the search overfit the cache.[/red]"
+        )
+    elif res.pbo < 0.1:
+        console.print("[green]<0.1: rankings transfer to OOS; methodology is robust.[/green]")
+    out_path = settings.reports_dir / "agent" / "pbo.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        __import__("json").dumps(
+            {
+                "pbo": res.pbo,
+                "n_strategies": res.n_strategies,
+                "n_periods": res.n_periods,
+                "n_combinations": res.n_combinations,
+                "methods": method_list,
+                "baseline": baseline,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    console.print(f"  wrote {out_path}")
+
+
+@eval_app.command("vault-init")
+def vault_init_cmd(
+    start: str = typer.Argument(..., help="Vault start (YYYY-MM-DD)."),
+    end: str = typer.Argument(..., help="Vault end (YYYY-MM-DD)."),
+    description: str = typer.Option("", help="Why this vault exists."),
+) -> None:
+    """Phase 8: declare a never-touched holdout vault."""
+    from autosignalx.eval.holdout_vault import initialize_vault
+
+    rec = initialize_vault(start=start, end=end, description=description)
+    console.print(
+        f"Vault locked: {rec['start']} -> {rec['end']} "
+        f"(hash {rec['lock_hash']}, locked at {rec['locked_at']})"
+    )
+
+
+@eval_app.command("vault-open")
+def vault_open_cmd(
+    methods: str = typer.Option("", help="Comma-separated methods to evaluate."),
+    baseline: str = typer.Option("naive", help="Baseline method."),
+) -> None:
+    """Phase 8: one-time vault open and final evaluation."""
+    from autosignalx.eval.holdout_vault import open_vault
+
+    abl_dir = settings.reports_dir / "ablations"
+    import pandas as pd
+
+    frames = []
+    for fp in abl_dir.glob("*.parquet"):
+        try:
+            frames.append(pd.read_parquet(fp))
+        except Exception:  # noqa: BLE001
+            continue
+    forecasts = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    method_list = (
+        [m.strip() for m in methods.split(",") if m.strip()]
+        if methods
+        else sorted(forecasts["method"].unique()) if not forecasts.empty else []
+    )
+    res = open_vault(forecasts, methods=method_list, baseline=baseline)
+    if res.get("already_opened"):
+        console.print("[yellow]Vault already opened.[/yellow]")
+    elif res.get("empty"):
+        console.print("[yellow]No rows in vault window.[/yellow]")
+    else:
+        console.print(f"Vault opened. n_rows={res['n_rows']}")
+        for m, mae in res["per_method_mae"].items():
+            skill = res["skill_vs_baseline"].get(m)
+            sk_str = f"{skill:+.3f}" if skill is not None else "n/a"
+            console.print(f"  {m}: MAE={mae:.4f} skill_vs_{baseline}={sk_str}")
+
+
 @eval_app.command("status")
 def status_cmd(
     study: str = typer.Option("", help="Inspect a study's ablations dir."),

@@ -30,8 +30,13 @@ def run_cmd(
     ),
     mode: str = typer.Option(
         "single",
-        help="'single' (one LLM does propose/critique/decide) or 'debate' "
-        "(Theorist/Skeptic/Adjudicator multi-role debate per round, Iter 12).",
+        help="'single' (one LLM does propose/critique/decide), 'debate' "
+        "(Theorist/Skeptic/Adjudicator), or 'lab' (Phase 14: planner + "
+        "specialist consults + KG writer).",
+    ),
+    specialists: str = typer.Option(
+        "statistician,quant,economist",
+        help="Comma-separated specialist pool for lab mode.",
     ),
 ) -> None:
     """Run the agent's research loop for ``max_rounds`` rounds.
@@ -54,6 +59,16 @@ def run_cmd(
     if mode == "debate":
         entries = debate_mod.run_debate(
             max_rounds=max_rounds, seed=seed, record_replay=record_replay
+        )
+    elif mode == "lab":
+        from autosignalx.agent import lab as lab_mod
+
+        spec_list = tuple(s.strip() for s in specialists.split(",") if s.strip())
+        entries = lab_mod.run_lab(
+            max_rounds=max_rounds,
+            seed=seed,
+            record_replay=record_replay,
+            specialists=spec_list or lab_mod.DEFAULT_SPECIALISTS,
         )
     else:
         entries = graph.run(
@@ -161,6 +176,35 @@ def harden_cmd(
         f"block-holdout: {n_block}/{n}, "
         f"survives all: [bold]{n_all}/{n}[/bold]."
     )
+
+
+@agent_app.command("eval-suite")
+def eval_suite_cmd() -> None:
+    """Phase 15: run calibration + RedTeam + coherence + prompt scoring."""
+    from autosignalx.agent.eval_suite import run_eval_suite
+
+    summary = run_eval_suite()
+    console.print(
+        f"Eval suite: findings={summary['n_findings']}, "
+        f"ledger={summary['n_ledger_entries']}, "
+        f"trace_quality={summary['n_trace_quality']}, "
+        f"survival={summary['n_survival_records']}"
+    )
+    cal = summary.get("calibration", {})
+    brier = cal.get("brier")
+    brier_finite = brier is not None and brier == brier  # NaN-safe: NaN != NaN
+    if brier_finite:
+        console.print(
+            f"  calibration n={cal.get('n')}, brier={brier:.3f}, ece={cal.get('ece'):.3f}"
+        )
+    else:
+        console.print("  calibration: insufficient data")
+    rt = summary.get("red_team", {})
+    console.print(f"  red_team: {rt.get('n_survives', 0)}/{rt.get('n', 0)} findings survive")
+    coh = summary.get("coherence") or []
+    if coh:
+        avg = sum(c.get("coherence_score", 0.0) for c in coh) / len(coh)
+        console.print(f"  coherence: {len(coh)} sessions, avg score={avg:.3f}")
 
 
 @agent_app.command("status")
