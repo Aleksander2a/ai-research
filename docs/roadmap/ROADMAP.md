@@ -456,7 +456,7 @@ target.
 
 Hugging Face Spaces is a fallback if Streamlit Cloud has issues.
 
-### Sub-goal C — Reviewer-runnable interactivity
+### Sub-goal C — User-runnable interactivity in the deployed app
 
 Stretch: allow reviewers to actually run a small custom study from the
 deployed app (Phase 2 must ship first). May require throttling and a

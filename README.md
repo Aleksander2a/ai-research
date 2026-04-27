@@ -4,8 +4,6 @@
 [![Static snapshot](https://img.shields.io/badge/snapshot-github_pages-222?logo=github&logoColor=white)](https://aleksander2a.github.io/ai-research/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Short on time?** Read [TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md) first — it's a one-page overview with a 5-minute walkthrough of the cockpit.
-
 AutoSignal-X is an **AI research system for discovering predictive structure in liquid daily ETF prices**, paired with an autonomous research loop that grades its own discoveries through a multi-stage statistical methodology before any finding is published. Five model layers (forecasting · regime representation · per-regime reasoning · cross-asset relations · agentic discovery) feed a hardening pipeline that runs every promoted finding through Diebold-Mariano + block-bootstrap → BH-FDR → adversarial replication → CPCV → PBO → Deflated Sharpe → Romano-Wolf → hierarchical Bayesian shrinkage → a strict bar that is the conjunction of every gate. The contribution is the methodology and the agent that operates it; any single trade is incidental.
 
 Three capabilities differentiate the system:
@@ -76,7 +74,7 @@ Summary:
 
 Two zero-install ways to see AutoSignal-X without cloning:
 
-- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — curated 20-page HTML rendering of the cockpit's headline panels from the latest committed artifacts (a subset of the live cockpit's 31 panels, covering every methodology-grade artifact and the agent activity feed). No runtime, no API key required; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
+- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — curated 20-page HTML rendering of the cockpit's most-informative pages from the latest committed artifacts (a subset of the live cockpit's 34 panels, covering every methodology-grade artifact and the agent activity feed). No runtime, no API key required; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
 - **[Live cockpit](https://ai-research-aleksander2a.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
 
 Both deployments run from this same repo on the same branch.
@@ -117,39 +115,62 @@ For the data flow diagram, contract schemas, and per-layer wiring, see [docs/ARC
 
 ## Cockpit panels
 
-The Streamlit cockpit has **31 panels** in the sidebar (in actual order):
+The Streamlit cockpit has **34 panels** grouped into seven sidebar sections. Every panel is a read-only viewer over a typed parquet/JSONL artifact under `reports/`; expensive computation lives in CLI commands.
 
-1. **Overview** — system pitch, layer grid, statistical methodology summary, panel index, inputs/outputs.
-2. **Data** — cache inventory; ETF and macro time series. Reads `data/cache/*.parquet`.
-3. **Forecast Arena** — per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands.
-4. **Regime Explorer** — KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings colored by regime.
-5. **Signal Discovery Lab** — per-regime feature ranking; cross-regime importance heatmap.
-6. **Cross-Asset Graph** — global partial-correlation matrix; Granger edge table; centrality table.
-7. **Regime-Conditioned Graph** — Phase 6: same machinery rebuilt per regime; surfaces hubs and bridges that flip role across regimes plus a per-asset regime-sensitivity table.
-8. **Signal Stability** — Phase 6: walk-forward feature-importance rankings; per-(regime, feature) stability metrics; rank-trajectory chart across windows.
-9. **Backtest Arena** — Phase 1: simulated trading on the test window. Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference, per-regime breakdown. Strict no-look-ahead.
-10. **Custom Study** — Phase 2: form-based per-study workspace (universe / dates / splits). Pre-flight validation + pipeline buttons.
-11. **Coverage Map** — Phase 14/16: hypothesis search-space heatmap of (method × asset × regime) coloured by EIG (expected information gain). Shows exactly where the agent has hunted, what's promoted, what's still open.
-12. **Statistical Power** — Phase 16: per-cell Cohen's d, power at α=0.05, sample-size required for 80% power. Distinguishes underpowered failures from genuine nulls.
-13. **Counterfactual Cards** — Phase 16: per-finding factor residualization (against 5-day-diff macro factors), what-if perturbations by prediction-magnitude quartile, outlier-removal stability.
-14. **Bayesian Evidence** — Phase 12: hierarchical Normal-Normal posterior; per-finding posterior mean / sd, P(θ>0), Bayes factor BF_10, posterior predictive intervals.
-15. **Specialist Council** — Phase 14: multi-role consultation feed (Statistician / Quant / RiskOfficer / Economist / Implementer / RedTeam / Historian) + PrincipalInvestigator routing log + persistent KG explorer.
-16. **Pre-Registration** — Phase 8: hash-committed hypothesis ledger. Open / resolved / promoted / refuted counts.
-17. **Holdout Vault** — Phase 8: never-touched final test slice. Locked / opened state, leakage assertions, one-time evaluation results.
-18. **Agent Calibration** — Phase 15: reliability diagram (predicted confidence vs observed survival rate); Brier score; Expected Calibration Error.
-19. **RedTeam Attacks** — Phase 15: per-finding asset-shuffle (re-test on every other asset in the same regime) + time-shift attacks (shift forecast_origin by 5 days).
-20. **Agent Coherence** — Phase 15: per-session lessons-uptake, lineage branching factor, theme-persistence entropy, composite coherence score.
-21. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
-22. **Auto-Play Replay** — playback controls (play/pause/reset, 0.5x / 1x / 2x / 4x speed) over the ledger.
-23. **Findings** — promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; expandable cards with full evidence.
-24. **Lineage** — Plotly DAG of hypothesis evolution across rounds, colored by status (promoted / refuted / open).
-25. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
-26. **Survival Analysis** — Phase 5/8/12 hardening grid: BH-FDR + adversarial (full-test / placebo / block-holdout) + Romano-Wolf + Deflated Sharpe + CPCV + Bayesian. The strict bar `survives_all_strict` is the conjunction.
-27. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
-28. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
-29. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
-30. **Reproducibility** — Phase 16: git hash + dirty flag + env + library versions + per-artifact SHA-256 + single bundle hash for the current cockpit state.
-31. **Ask the Memory** — Phase 3: grounded RAG chat over the run corpus. Cite-or-refuse system prompt; off-corpus questions trigger refusal.
+### Headline (1 panel)
+
+1. **Headline** — default-landing system overview: what AutoSignal-X is, the methodology stack, the bundled-artifact metric row (promoted findings, strict-bar survivors, synthetic-benchmark recall + FDR), the strict-bar verdict on each finding, the layer-by-layer marginal-contribution table, an ASCII pipeline diagram, and a cockpit map.
+
+### Data & Forecasts (3 panels)
+
+2. **Overview** — system status, layer grid, statistical-methodology summary, panel index, inputs/outputs.
+3. **Data** — cache inventory; ETF and macro time series. Reads `data/cache/*.parquet`.
+4. **Forecast Arena** — per-method overall metrics; per-(method, regime) stratified metrics; per-asset trajectory chart with 80% interval bands. Reads `reports/ablations/*.parquet`.
+
+### Discovery (L2-L4) (5 panels)
+
+5. **Regime Explorer** — KMeans + HMM regime timelines; PCA-2D scatter of contrastive embeddings coloured by regime.
+6. **Signal Discovery Lab** — per-regime feature ranking from HistGradientBoosting + permutation importance; cross-regime importance heatmap.
+7. **Cross-Asset Graph** — global GLASSO partial-correlation matrix; Granger edge table; NetworkX centrality table.
+8. **Regime-Conditioned Graph** — Phase 6: GLASSO + Granger + centrality recomputed per regime; per-asset cross-regime sensitivity (betweenness range across regimes).
+9. **Signal Stability** — Phase 6: walk-forward feature-importance rankings; per-(regime, feature) stability metrics (mean rank, rank std, top-K share); rank-trajectory chart.
+
+### Strategy & Studies (2 panels)
+
+10. **Backtest Arena** — Phase 1: simulated trading on the test window. Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference, per-regime breakdown. Strict no-look-ahead.
+11. **Custom Study** — Phase 2: form-based per-study workspace (universe / dates / splits). Pre-flight validation + pipeline buttons.
+
+### Methodology (12 panels)
+
+12. **Survival Analysis** — Phase 5/8/12 hardening grid for every promoted finding: BH-FDR + adversarial (full-test / placebo / block-holdout) + Romano-Wolf + Deflated Sharpe + CPCV + hierarchical Bayesian. The strict bar `survives_all_strict` is the conjunction.
+13. **Bayesian Evidence** — Phase 12: hierarchical Normal-Normal posterior; per-finding posterior mean / sd, P(θ>0), Bayes factor BF₁₀, posterior predictive intervals.
+14. **Synthetic Benchmark** — per-gate recall + FDR on a controlled synthetic universe with deliberately planted causal structure; the apparatus' own audited discriminative power.
+15. **Capability Ablation** — Phase 16: layer-by-layer marginal contribution. Each variant adds one model layer's worth of methods to the pool the promotion pipeline can draw from; reports Mean MAE, marginal MAE-drop, and a cost proxy in bytes.
+16. **Coverage Map** — Phase 14/16: hypothesis search-space heatmap of (method × asset × regime) coloured by Expected Information Gain.
+17. **Statistical Power** — Phase 16: per-cell Cohen's d, power at α=0.05, sample-size required for 80% power. Distinguishes under-powered failures from genuine nulls.
+18. **Counterfactual Cards** — Phase 16: per-finding factor residualization (against 5-day-diff macro factors), what-if perturbations by prediction-magnitude quartile, outlier-removal stability.
+19. **Pre-Registration** — Phase 8: hash-committed hypothesis ledger. Open / resolved / promoted / refuted counts.
+20. **Holdout Vault** — Phase 8: never-touched final test slice. Locked / opened state, leakage assertions, one-time evaluation results.
+21. **RedTeam Attacks** — Phase 15: per-finding asset-shuffle (re-test on every other asset in the same regime) + time-shift attacks (shift `forecast_origin` by 5 days).
+22. **Agent Calibration** — Phase 15: reliability diagram (predicted confidence vs observed survival rate); Brier score; Expected Calibration Error.
+23. **Agent Coherence** — Phase 15: per-session lessons-uptake, lineage branching factor, theme-persistence entropy, composite coherence score.
+
+### Agent activity (9 panels)
+
+24. **Agent Console** — chat-style ledger timeline; per-round trace-quality chart.
+25. **Specialist Council** — Phase 14: lab-mode multi-role consultation feed (Statistician / Quant / RiskOfficer / Economist / Implementer / RedTeam / Historian) + PrincipalInvestigator routing log + persistent KG explorer.
+26. **Auto-Play Replay** — playback controls (play / pause / reset, 0.5× / 1× / 2× / 4× speed) over the ledger.
+27. **Findings** — promoted findings (passed DM + bootstrap gate) sorted by skill-vs-naive; expandable cards with full evidence.
+28. **Lineage** — Plotly DAG of hypothesis evolution across rounds, coloured by status (promoted / refuted / open).
+29. **Self-Critique** — agent's verdicts on its own past findings against current evidence.
+30. **Lessons & Memory** — accumulating Markdown of consolidated session notes (long-horizon memory).
+31. **Telemetry** — cost / tokens / latency per LLM call; per-model and per-step breakdown; cumulative cost chart.
+32. **Sessions** — per-session productivity (rounds, findings, cost-per-finding); cumulative trend across sessions.
+
+### Reproducibility & memory (2 panels)
+
+33. **Reproducibility** — Phase 16: git commit + dirty flag + Python env + library versions + per-artifact SHA-256 + single bundle hash for the current cockpit state.
+34. **Ask the Memory** — Phase 3: grounded RAG chat over the run corpus. Cite-or-refuse system prompt; off-corpus questions trigger refusal.
 
 A **Study scope** selector in the sidebar switches study-aware panels (Forecast Arena, Backtest Arena) to read from a chosen study's tree; the default scope reads the project's canonical artifacts.
 
@@ -280,9 +301,9 @@ src/autosignalx/         Library (one module per concern)
   reproducibility.py     Phase 16: git+env+artifact-hash bundle
   cli.py                 Typer entrypoint (registers every layer's sub-app)
   config.py              Pydantic settings, .env loading, YAML config reader
-app/                     Streamlit cockpit (31 panels)
+app/                     Streamlit cockpit (34 panels in 7 sections)
 configs/                 YAML experiment configs
-tests/                   337 pytest tests (74 net new across Phases 7/8/12/14/15/16)
+tests/                   342 pytest tests (74 net new across Phases 7/8/12/14/15/16 plus the apparatus-capability suite)
 docs/ARCHITECTURE.md     Implementation reference
 docs/roadmap/            ROADMAP.md (Phase-by-phase plan and status; Phases 1-8, 12, 14-16 shipped)
 data/                    (gitignored cache; data/studies/<name>/ for per-study workspaces)
@@ -294,9 +315,11 @@ REPORT.md                Research questions, methodology, results, limitations, 
 
 ## Documentation
 
-- **README.md** (this file) — system overview, inputs/outputs, panels, CLI, repository layout.
-- **[REPORT.md](REPORT.md)** — research questions, methodology, results, limitations.
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — implementation: data flow, contracts, per-layer wiring, agent loop, sandbox model.
+- **README.md** (this file) — system overview, inputs / outputs, the panel index, the CLI surface, and the repository layout.
+- **[TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md)** — one-page overview describing what the system is, why it's designed this way, how the layers fit together, the methodology stack at a glance, and a five-minute path through the cockpit. A good starting point if you want a single page.
+- **[REPORT.md](REPORT.md)** — research questions, methodology in detail, per-phase results, the apparatus-capability evaluation (synthetic benchmark + capability ablation), limitations, and future work.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — implementation reference: data flow, layer artifact contracts, per-layer module index, agent loop, sandbox model.
+- **[docs/roadmap/ROADMAP.md](docs/roadmap/ROADMAP.md)** — phase-by-phase plan and shipping status (Phases 1-8, 12, 14-16 shipped).
 
 ## License
 

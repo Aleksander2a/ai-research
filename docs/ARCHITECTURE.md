@@ -80,7 +80,7 @@ flowchart TD
   SM --> AGW["reports/agent/{ledger,findings,lessons,<br/>telemetry,trace_quality,self_critique}.jsonl"]
   SM --> AGENB["reports/ablations/<agent-authored>.parquet<br/>(spawn_method / spawn_method_code)"]
 
-  AB --> CK["app/streamlit_app.py<br/>(31 cockpit panels)"]
+  AB --> CK["app/streamlit_app.py<br/>(34 cockpit panels in 7 sections)"]
   AB2 --> CK
   RL --> CK
   SS --> CK
@@ -508,7 +508,7 @@ This is a **soft** boundary suitable for trusted (author-controlled) prompts. It
 
 ## Cockpit reader pattern (`app/streamlit_app.py`)
 
-A flat module registering 31 panel render functions in a `PANELS` dict (defined at the end of `app/streamlit_app.py`), dispatched by a sidebar `st.radio`. Every panel is a read-only reader over `reports/` (or `data/cache/` for the Data panel); none of them computes heavy work, expensive computation lives in CLI commands and is persisted to disk.
+A flat module registering 34 panel render functions in a `PANELS` dict (defined at the end of `app/streamlit_app.py`), dispatched by a two-step sidebar (Section → Panel) over the `PANEL_SECTIONS` list. Every panel is a read-only reader over `reports/` (or `data/cache/` for the Data panel); none of them computes heavy work — expensive computation lives in CLI commands and is persisted to disk.
 
 | Panel | Reads |
 |---|---|
@@ -547,7 +547,7 @@ A flat module registering 31 panel render functions in a `PANELS` dict (defined 
 | Headline | aggregates the top-line metrics across `findings.jsonl` / `survival.jsonl` / `synthetic_benchmark.json` / `capability_ablation.json` / `reproducibility_badge.json` for the reviewer's first-look panel |
 | Ask the Memory | corpus index + LLM (Phase 3) |
 
-The cockpit now groups panels into seven sidebar sections: **Headline**, **Data & Forecasts**, **Discovery (L2-L4)**, **Strategy & Studies**, **Methodology**, **Agent activity**, **Reviewer**. The two-step radio (Section -> Panel) keeps the surface navigable as the panel count grew past 30.
+The cockpit groups all 34 panels into seven sidebar sections: **Headline** (1), **Data & Forecasts** (3), **Discovery (L2-L4)** (5), **Strategy & Studies** (2), **Methodology** (12), **Agent activity** (9), **Reproducibility & memory** (2). The two-step radio (Section → Panel) keeps the surface navigable as the panel count grew past 30.
 
 ## Adding a new layer
 
