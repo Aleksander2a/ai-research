@@ -136,8 +136,9 @@ def test_graceful_degradation_with_no_artifacts(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "reports_dir", tmp_path / "empty_reports")
     out = tmp_path / "snap"
     result = builder.build_snapshot(out_dir=out)
-    assert len(result.pages_written) == 10
-    # Pages should be valid HTML even with no artifacts
+    # The snapshot now has 20 curated reviewer pages; every one must render
+    # gracefully even with zero artifacts on disk.
+    assert len(result.pages_written) == 20
     for name in result.pages_written:
         html = (out / name).read_text(encoding="utf-8")
         assert html.startswith("<!DOCTYPE html>")

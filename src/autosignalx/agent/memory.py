@@ -104,6 +104,7 @@ def consolidate(
         ],
         step="consolidate",
         round=-1,
+        session_id=session_id,
     )
     return raw.strip()
 

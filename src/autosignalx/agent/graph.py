@@ -52,7 +52,7 @@ def make_propose_node(provider: LLMProvider):
         ctx = state.get("context", {})
         ledger_summary = ledger.summarize_for_prompt(state.get("ledger", []))
         msgs = prompts.proposer_messages(ctx, ledger_summary)
-        raw = provider.chat(msgs, step="propose", round=rd)
+        raw = provider.chat(msgs, step="propose", round=rd, session_id=state.get("session_id"))
         h = _safe_parse_json(raw)
         if not h:
             h = {"hypothesis": "(parse failed)", "experiment": {}, "raw": raw[:500]}
@@ -138,7 +138,7 @@ def make_critique_node(provider: LLMProvider):
         h = state.get("current_hypothesis") or {}
         exp = state.get("current_experiment") or {}
         msgs = prompts.critic_messages(h, exp)
-        raw = provider.chat(msgs, step="critique", round=rd)
+        raw = provider.chat(msgs, step="critique", round=rd, session_id=state.get("session_id"))
         entry = {"round": rd, "step": "critique", "content": raw.strip(), "session_id": state.get("session_id")}
         ledger.append(entry)
         state["current_critique"] = raw.strip()
@@ -158,7 +158,7 @@ def make_decide_node(provider: LLMProvider):
         else:
             ledger_summary = ledger.summarize_for_prompt(state.get("ledger", []))
             msgs = prompts.decider_messages(ledger_summary, rd, max_rounds)
-            raw = provider.chat(msgs, step="decide", round=rd)
+            raw = provider.chat(msgs, step="decide", round=rd, session_id=state.get("session_id"))
             decision = _safe_parse_json(raw)
             action = str(decision.get("action", "continue"))
             if action not in {"continue", "stop"}:

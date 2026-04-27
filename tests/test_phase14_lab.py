@@ -33,8 +33,9 @@ def test_specialist_roles_have_prompts():
 def test_consult_specialist_returns_consult(monkeypatch):
     class FakeProvider:
         mode = "fake"
+        role = "statistician"
 
-        def chat(self, messages, step, round):  # noqa: ARG002
+        def chat(self, messages, step, round, session_id=None):  # noqa: ARG002
             return "Test specialist response."
 
     consult = specialists_mod.consult_specialist(
@@ -42,6 +43,7 @@ def test_consult_specialist_returns_consult(monkeypatch):
         payload={"hypothesis": {"text": "test"}},
         provider=FakeProvider(),
         round_n=0,
+        session_id="20260427-deadbeef",
     )
     assert consult.role == "statistician"
     assert consult.response.startswith("Test")

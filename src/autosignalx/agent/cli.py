@@ -89,17 +89,41 @@ def run_cmd(
     console.print(table)
 
 
+def _latest_session_id_or(default_text: str = "session") -> str:
+    """Return the most-recent real ``session_id`` from the ledger.
+
+    Falls back to a freshly generated session id when the ledger is empty
+    or every entry pre-dates the session_id field. Avoids the previous
+    foot-gun where ``"current"`` was persisted into lessons.md and trace
+    quality, which broke per-session aggregation downstream."""
+    from autosignalx.agent.findings import make_session_id
+
+    sids: list[str] = []
+    for e in ledger.load():
+        sid = e.get("session_id")
+        if sid and sid != "current":
+            sids.append(str(sid))
+    if sids:
+        return sids[-1]
+    return make_session_id() if default_text == "session" else default_text
+
+
 @agent_app.command("consolidate")
 def consolidate_cmd(
     session_id: str = typer.Option(
-        "current", help="Session ID for the lessons section header."
+        "",
+        help="Session ID for the lessons section header. Empty -> "
+        "use the most-recent real session_id from the ledger "
+        "(prevents the legacy 'current' label leaking into lessons.md).",
     ),
 ) -> None:
     """Consolidate the current ledger + findings into a Markdown lessons
     section, appended to reports/agent/lessons.md."""
     from autosignalx.agent import memory as memory_mod
 
-    path, section = memory_mod.consolidate_and_append(session_id=session_id)
+    sid = session_id or _latest_session_id_or()
+    path, section = memory_mod.consolidate_and_append(session_id=sid)
+    console.print(f"Consolidated as session_id={sid}")
     console.print(f"Wrote {len(section)} chars to {path}")
     console.print(section[:600] + ("..." if len(section) > 600 else ""))
 
@@ -107,8 +131,9 @@ def consolidate_cmd(
 @agent_app.command("score-traces")
 def score_traces_cmd(
     session_id: str = typer.Option(
-        "current",
-        help="Session ID to score; 'current' = the entire current ledger.",
+        "",
+        help="Session ID to score; empty -> most-recent real session_id "
+        "from the ledger (instead of the legacy literal 'current').",
     ),
 ) -> None:
     """Score every round of the current ledger via LLM-as-judge."""
@@ -118,11 +143,12 @@ def score_traces_cmd(
     if not entries:
         console.print("Ledger is empty.")
         return
+    sid = session_id or _latest_session_id_or()
     console.print(
         f"Scoring {max(int(e.get('round', 0)) for e in entries) + 1} rounds "
-        f"({len(entries)} ledger entries)..."
+        f"({len(entries)} ledger entries) as session_id={sid}..."
     )
-    scores = trace_eval.score_session(entries, session_id=session_id)
+    scores = trace_eval.score_session(entries, session_id=sid)
     for s in scores:
         console.print(
             f"  round {s['round']}: clarity={s.get('clarity')} "

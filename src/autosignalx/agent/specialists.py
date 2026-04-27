@@ -220,6 +220,7 @@ def consult_specialist(
     provider: LLMProvider | None = None,
     record_replay: bool = False,
     round_n: int = 0,
+    session_id: str | None = None,
 ) -> Consult:
     """Dispatch one specialist consultation.
 
@@ -258,6 +259,7 @@ def consult_specialist(
         ],
         step=f"specialist:{role}",
         round=round_n,
+        session_id=session_id,
     )
     return Consult(
         role=role,

@@ -80,7 +80,7 @@ flowchart TD
   SM --> AGW["reports/agent/{ledger,findings,lessons,<br/>telemetry,trace_quality,self_critique}.jsonl"]
   SM --> AGENB["reports/ablations/<agent-authored>.parquet<br/>(spawn_method / spawn_method_code)"]
 
-  AB --> CK["app/streamlit_app.py<br/>(15 cockpit panels)"]
+  AB --> CK["app/streamlit_app.py<br/>(31 cockpit panels)"]
   AB2 --> CK
   RL --> CK
   SS --> CK
@@ -354,7 +354,9 @@ Pulls from yfinance, normalizes to long format, persists parquet, defines walk-f
 | `bayesian.py` | Phase 12: Normal-Normal hierarchical model; `hierarchical_findings(findings, forecasts)` -> posterior mean/sd/prob_positive/Bayes factor; `posterior_predictive_check` |
 | `counterfactual.py` | Phase 16: per-finding interrogation lenses -- `factor_residualization`, `what_if_perturbation`, `outlier_removal`, `counterfactual_card` |
 | `power.py` | Phase 16: per-cell statistical power -- `cohen_d`, `power_at_alpha`, `min_n_for_power`, `power_grid` |
-| `cli.py` | `autosignalx eval baseline` / `chronos` / `returns` / `pbo` / `vault-init` / `vault-open` / `status` (hardening is exposed under `autosignalx agent harden`) |
+| `synthetic_benchmark.py` | Synthetic-known-answer benchmark; `generate_universe(...)`, `grade_apparatus(...)`, `run_benchmark(n_trials, ...)`. Plants known-true (asset, regime, method) edges + distractor cells; runs every gate; reports recall/FDR per gate. |
+| `capability_ablation.py` | Smallest-capability-preserving ablation (Deeter Q2); `run_capability_ablation(reports_dir, ...)`. Drops each layer's contribution and reports marginal MAE-skill vs cost-proxy bytes per variant. |
+| `cli.py` | `autosignalx eval baseline` / `chronos` / `returns` / `pbo` / `vault-init` / `vault-open` / `synthetic` / `ablate-capability` / `status` (hardening is exposed under `autosignalx agent harden`) |
 
 ### `forecast/`
 
@@ -540,7 +542,12 @@ A flat module registering 31 panel render functions in a `PANELS` dict (defined 
 | Telemetry | `reports/agent/telemetry.jsonl` |
 | Sessions | All stores, aggregated by `session_id` via `agent/sessions.py` |
 | Reproducibility | live computed via `autosignalx.reproducibility.reproducibility_badge`; persisted to `reports/reproducibility_badge.json` (Phase 16) |
+| Synthetic Benchmark | `reports/agent/synthetic_benchmark.json` (per-gate recall/FDR on planted-structure synthetic universes) |
+| Capability Ablation | `reports/agent/capability_ablation.json` (layer-drop marginal-MAE vs cost-proxy frontier) |
+| Headline | aggregates the top-line metrics across `findings.jsonl` / `survival.jsonl` / `synthetic_benchmark.json` / `capability_ablation.json` / `reproducibility_badge.json` for the reviewer's first-look panel |
 | Ask the Memory | corpus index + LLM (Phase 3) |
+
+The cockpit now groups panels into seven sidebar sections: **Headline**, **Data & Forecasts**, **Discovery (L2-L4)**, **Strategy & Studies**, **Methodology**, **Agent activity**, **Reviewer**. The two-step radio (Section -> Panel) keeps the surface navigable as the panel count grew past 30.
 
 ## Adding a new layer
 

@@ -1,6 +1,6 @@
 # AutoSignal-X — Research Report
 
-## Executive summary (state at branch `claude/mystifying-wing-8bd66f`)
+## Executive summary (state on `main`, post-Phase-16)
 
 * **What it is.** A 5-layer modular AI research system (Forecasting / Representation / Reasoning / Relational / Agentic) that discovers conditional predictive structure in liquid daily ETF prices and grades every claim through a defendable methodology stack. The contribution is the apparatus, not any single discovery.
 * **Methodology stack (every promoted finding goes through every gate).**
@@ -653,6 +653,75 @@ These combine into a single composite score persisted to `reports/agent/coherenc
 ### Eval suite orchestration
 
 `agent/eval_suite.py` and `autosignalx agent eval-suite` run all four (calibration, RedTeam, coherence per session, prompt-version scoring) end-to-end and write a summary JSON. Intended to run after every session's `harden` step.
+
+# Reviewer-grade additions (synthetic benchmark + capability ablation)
+
+These two artifacts post-date Phase 16 and exist to answer two specific
+reviewer questions that REPORT.md's prior text only addressed implicitly.
+
+### Synthetic-known-answer benchmark
+
+Real-market alpha is rare and noisy; that makes it impossible to
+distinguish "the apparatus correctly grades a finding as null" from
+"the apparatus is unable to recognise structure when it exists." The
+benchmark addresses this by generating synthetic price universes where
+specific (asset, regime, method) cells have a deliberately planted
+predictive edge and surrounding distractor cells have none. Implementation
+in `eval/synthetic_benchmark.py`; CLI `autosignalx eval synthetic`.
+
+Per-gate recall + FDR on a representative configuration (planted
+skill 0.18 vs naive, 12 distractors, 6 trials):
+
+| Gate | Mean recall | Mean FDR | Mean # promoted |
+|---|---:|---:|---:|
+| `dm_only` | 0.67 | 0.00 | 2.0 |
+| `+fdr` | 0.67 | 0.00 | 2.0 |
+| `+adversarial` | 0.22 | 0.00 | 0.7 |
+| `+rw` | 0.22 | 0.00 | 0.7 |
+| `+bayes` | 0.22 | 0.00 | 0.7 |
+| `strict` | 0.22 | 0.00 | 0.7 |
+
+Reading: the apparatus is **conservative by design**. DM-only with bootstrap
+recovers two-thirds of planted truths at zero FDR; layering adversarial
+replication and the Bayesian gate drops recall to one-quarter while
+maintaining zero FDR. The per-gate drop is the price of selection-bias
+safety, not a bug. The benchmark is committed to
+`reports/agent/synthetic_benchmark.json` and rendered in the cockpit's
+**Synthetic Benchmark** panel + the static snapshot.
+
+### Smallest-capability-preserving ablation (Deeter Q2)
+
+Implementation in `eval/capability_ablation.py`; CLI `autosignalx eval
+ablate-capability`. The ablation does not retrain models; it concatenates
+the cached ablation parquets, slices by `method` column, and constructs
+progressively richer variants (`baseline_only` -> `+arima` -> `+chronos_univ`
+-> `+multivariate` -> `+regime` -> `+graph` -> `full_stack`). Each
+variant's MAE is computed on the union of methods it has access to;
+marginal-skill = previous-variant-MAE − this-variant-MAE.
+
+On the bundled artifacts:
+
+| Variant | Layers | # findings | Mean MAE | Marginal skill | Cost (KB) |
+|---|---|---:|---:|---:|---:|
+| `baseline_only` | L1 floor | 0 | 4.254 | — | 329 |
+| `+arima` | L1 + ARIMA | 0 | 4.260 | -0.005 | 329 |
+| `+chronos_univ` | L1 + Chronos-2 univariate | 0 | 4.330 | -0.070 | 913 |
+| `+multivariate` | L1 full | 1 | 4.372 | -0.042 | 913 |
+| `+regime` | L1 + L2 (regime gating) | 1 | 4.372 | 0.000 | 913 |
+| `+graph` | + L4 (cross-asset filter) | 1 | 4.372 | 0.000 | 913 |
+| `full_stack` | L1 + L2 + L3 + L4 + L5 | 1 | 4.372 | 0.000 | 913 |
+
+Reading: **naive is the unconditional MAE floor**; ARIMA adds nothing
+on price-level forecasting; Chronos-2 actively *worsens* MAE on this
+benchmark. The single promoted finding (`f_9395cd1bd1be` -- TLT, regime 3)
+only emerges with the multivariate variant **and** the regime layer
+because the gate is conditional on regime; without L2 the apparatus
+can't promote anything. So the cockpit's compression frontier is
+unambiguous: drop ARIMA / Chronos-2 univariate, keep
+`chronos2_multivariate` + L2-L4-L5 stack.
+
+The result is committed to `reports/agent/capability_ablation.json`
+and rendered in the cockpit's **Capability Ablation** panel.
 
 # Phase 16 -- Cockpit observability and explainability
 

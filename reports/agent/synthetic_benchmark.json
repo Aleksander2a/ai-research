@@ -1,0 +1,383 @@
+{
+  "generated_at": "2026-04-27T09:47:03+00:00",
+  "n_trials": 6,
+  "planted_truths": 3,
+  "distractors": 12,
+  "ablations": [
+    {
+      "gate": "dm_only",
+      "mean_recall": 0.6666666666666666,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 2.0
+    },
+    {
+      "gate": "+fdr",
+      "mean_recall": 0.6666666666666666,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 2.0
+    },
+    {
+      "gate": "+adversarial",
+      "mean_recall": 0.2222222222222222,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 0.6666666666666666
+    },
+    {
+      "gate": "+rw",
+      "mean_recall": 0.2222222222222222,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 0.6666666666666666
+    },
+    {
+      "gate": "+bayes",
+      "mean_recall": 0.2222222222222222,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 0.6666666666666666
+    },
+    {
+      "gate": "strict",
+      "mean_recall": 0.2222222222222222,
+      "mean_fdr": 0.0,
+      "mean_n_promoted": 0.6666666666666666
+    }
+  ],
+  "per_trial": [
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 3,
+          "recall": 1.0,
+          "fdr": 0.0,
+          "n_true_positives": 3,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 3,
+          "recall": 1.0,
+          "fdr": 0.0,
+          "n_true_positives": 3,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        }
+      ]
+    },
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        }
+      ]
+    },
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        }
+      ]
+    },
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 0,
+          "recall": 0.0,
+          "fdr": 0.0,
+          "n_true_positives": 0,
+          "n_false_positives": 0
+        }
+      ]
+    },
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        }
+      ]
+    },
+    {
+      "n_truths": 3,
+      "n_distractors": 12,
+      "n_candidates": 120,
+      "gates": [
+        {
+          "gate": "dm_only",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+fdr",
+          "n_promoted": 2,
+          "recall": 0.6666666666666666,
+          "fdr": 0.0,
+          "n_true_positives": 2,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+adversarial",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+rw",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "+bayes",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        },
+        {
+          "gate": "strict",
+          "n_promoted": 1,
+          "recall": 0.3333333333333333,
+          "fdr": 0.0,
+          "n_true_positives": 1,
+          "n_false_positives": 0
+        }
+      ]
+    }
+  ],
+  "config": {
+    "n_assets": 4,
+    "n_origins": 80,
+    "n_regimes": 2,
+    "planted_skill": 0.18,
+    "noise_std": 1.0
+  }
+}

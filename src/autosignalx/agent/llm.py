@@ -20,18 +20,31 @@ REPLAY_PATH = settings.replay_dir / "agent_steps.jsonl"
 
 
 class LLMProvider(Protocol):
-    def chat(self, messages: list[dict[str, str]], step: str, round: int) -> str: ...
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        step: str,
+        round: int,
+        session_id: str | None = None,
+    ) -> str: ...
     @property
     def mode(self) -> str: ...
+    @property
+    def role(self) -> str: ...
 
 
 class ReplayProvider:
-    """Plays back recorded LLM responses keyed by ``(round, step)``."""
+    """Plays back recorded LLM responses keyed by ``(round, step)``.
+
+    Replay records typically have no `role` field so the provider's
+    constructor-time ``role`` is the source of truth for downstream
+    bookkeeping (calibration, prompt scoring)."""
 
     mode = "replay"
 
-    def __init__(self, path: Path | None = None) -> None:
+    def __init__(self, path: Path | None = None, role: str = "proposer") -> None:
         self.path = path or REPLAY_PATH
+        self.role = role
         self._records: dict[tuple[int, str], str] = {}
         self._load()
 
@@ -55,6 +68,7 @@ class ReplayProvider:
         messages: list[dict[str, str]],  # noqa: ARG002 (protocol signature)
         step: str,
         round: int,
+        session_id: str | None = None,  # noqa: ARG002
     ) -> str:
         key = (round, step)
         if key in self._records:
@@ -65,7 +79,9 @@ class ReplayProvider:
 class LiveProvider:
     """DeepInfra (OpenAI-compatible) chat via ``langchain_openai.ChatOpenAI``.
 
-    Caches responses by content hash so re-runs are deterministic and free."""
+    Caches responses by content hash so re-runs are deterministic and free.
+    Carries ``role`` on the instance so telemetry records can attribute
+    every call to the role that issued it (Theorist / Skeptic / etc.)."""
 
     mode = "live"
 
@@ -77,6 +93,7 @@ class LiveProvider:
         temperature: float = 0.0,
         cache_dir: Path | None = None,
         record_path: Path | None = None,
+        role: str = "proposer",
     ) -> None:
         from langchain_openai import ChatOpenAI
 
@@ -89,13 +106,20 @@ class LiveProvider:
         self.cache_dir = cache_dir or (settings.reports_dir / "agent" / "llm_cache")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.record_path = record_path
+        self.role = role
 
     def _cache_key(self, messages: list[dict[str, str]]) -> str:
         return hashlib.sha256(
             json.dumps(messages, sort_keys=True).encode("utf-8")
         ).hexdigest()[:24]
 
-    def chat(self, messages: list[dict[str, str]], step: str, round: int) -> str:
+    def chat(
+        self,
+        messages: list[dict[str, str]],
+        step: str,
+        round: int,
+        session_id: str | None = None,
+    ) -> str:
         from autosignalx.agent import telemetry as telemetry_mod
 
         key = self._cache_key(messages)
@@ -142,12 +166,13 @@ class LiveProvider:
                 model_id = "unknown"
             telemetry_mod.record_call(
                 model=str(model_id),
-                role="unknown",  # role not threaded yet; future iter
+                role=self.role,
                 step=step,
                 round_n=round,
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
                 latency_ms=timer.elapsed_ms,
+                session_id=session_id,
             )
 
         if self.record_path is not None:
@@ -244,11 +269,12 @@ def get_provider(record_replay: bool = False, role: str = "proposer") -> LLMProv
     appended to ``replay/agent_steps.jsonl`` so a future no-key reviewer
     sees the same trace."""
     if settings.use_replay:
-        return ReplayProvider()
+        return ReplayProvider(role=role)
     record_path = REPLAY_PATH if record_replay else None
     return LiveProvider(
         api_key=settings.deepinfra_api_key,
         model=_model_for_role(role),
         base_url=settings.deepinfra_base_url,
         record_path=record_path,
+        role=role,
     )

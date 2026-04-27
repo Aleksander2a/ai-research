@@ -1,0 +1,105 @@
+{
+  "generated_at": "2026-04-27T09:48:59+00:00",
+  "n_methods_available": 6,
+  "rows": [
+    {
+      "variant": "baseline_only",
+      "layers": "L1 floor",
+      "methods": [
+        "naive"
+      ],
+      "n_findings": 0,
+      "n_rows": 10032,
+      "mean_mae": 4.254167295528942,
+      "marginal_skill": NaN,
+      "cost_proxy": 337413
+    },
+    {
+      "variant": "+arima",
+      "layers": "L1 + ARIMA",
+      "methods": [
+        "naive",
+        "arima"
+      ],
+      "n_findings": 0,
+      "n_rows": 20064,
+      "mean_mae": 4.259629045011219,
+      "marginal_skill": -0.0054617494822775114,
+      "cost_proxy": 337413
+    },
+    {
+      "variant": "+chronos_univ",
+      "layers": "L1 + Chronos-2 univariate",
+      "methods": [
+        "naive",
+        "arima",
+        "chronos2_univariate"
+      ],
+      "n_findings": 0,
+      "n_rows": 30096,
+      "mean_mae": 4.3297311352234,
+      "marginal_skill": -0.07010209021218117,
+      "cost_proxy": 934638
+    },
+    {
+      "variant": "+multivariate",
+      "layers": "L1 full",
+      "methods": [
+        "naive",
+        "arima",
+        "chronos2_univariate",
+        "chronos2_multivariate"
+      ],
+      "n_findings": 1,
+      "n_rows": 40128,
+      "mean_mae": 4.372023593778287,
+      "marginal_skill": -0.04229245855488717,
+      "cost_proxy": 934638
+    },
+    {
+      "variant": "+regime",
+      "layers": "L1 + L2 (regime gating)",
+      "methods": [
+        "naive",
+        "arima",
+        "chronos2_univariate",
+        "chronos2_multivariate"
+      ],
+      "n_findings": 1,
+      "n_rows": 40128,
+      "mean_mae": 4.372023593778287,
+      "marginal_skill": 0.0,
+      "cost_proxy": 934638
+    },
+    {
+      "variant": "+graph",
+      "layers": "+ L4 (cross-asset filter)",
+      "methods": [
+        "naive",
+        "arima",
+        "chronos2_univariate",
+        "chronos2_multivariate"
+      ],
+      "n_findings": 1,
+      "n_rows": 40128,
+      "mean_mae": 4.372023593778287,
+      "marginal_skill": 0.0,
+      "cost_proxy": 934638
+    },
+    {
+      "variant": "full_stack",
+      "layers": "L1 + L2 + L3 + L4 + L5",
+      "methods": [
+        "naive",
+        "arima",
+        "chronos2_univariate",
+        "chronos2_multivariate"
+      ],
+      "n_findings": 1,
+      "n_rows": 40128,
+      "mean_mae": 4.372023593778287,
+      "marginal_skill": 0.0,
+      "cost_proxy": 934638
+    }
+  ]
+}

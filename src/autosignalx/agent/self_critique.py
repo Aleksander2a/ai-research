@@ -57,6 +57,7 @@ def critique_finding(
     ledger_summary: str,
     other_findings_summary: str,
     provider: LLMProvider | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the self-critique LLM over a single finding. Returns the
     record (also persisted)."""
@@ -75,6 +76,7 @@ def critique_finding(
         ],
         step="self_critique",
         round=-1,
+        session_id=session_id,
     )
     parsed = _safe_parse_json(raw)
     record = {
@@ -83,13 +85,17 @@ def critique_finding(
         "rationale": parsed.get("rationale", ""),
         "raw": raw[:300] if not parsed else None,
         "ts": datetime.now(UTC).isoformat(timespec="seconds"),
+        "session_id": session_id,
     }
     with _critique_path().open("a", encoding="utf-8") as f:
         f.write(json.dumps(record, default=str) + "\n")
     return record
 
 
-def critique_all_findings(provider: LLMProvider | None = None) -> list[dict[str, Any]]:
+def critique_all_findings(
+    provider: LLMProvider | None = None,
+    session_id: str | None = None,
+) -> list[dict[str, Any]]:
     """Run self-critique over every promoted finding currently in the store."""
     findings = findings_mod.load()
     ledger_entries = ledger_mod.load()
@@ -104,7 +110,7 @@ def critique_all_findings(provider: LLMProvider | None = None) -> list[dict[str,
     )[:1200]
     out = []
     for f in findings:
-        out.append(critique_finding(f, ledger_summary, other_summary, provider))
+        out.append(critique_finding(f, ledger_summary, other_summary, provider, session_id=session_id))
     return out
 
 

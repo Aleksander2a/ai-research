@@ -4,9 +4,19 @@
 [![Static snapshot](https://img.shields.io/badge/snapshot-github_pages-222?logo=github&logoColor=white)](https://aleksander2a.github.io/ai-research/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-A 5-layer modular AI research system for discovering predictive structure in liquid daily ETF prices, paired with a multi-agent research loop that proposes hypotheses, designs and runs experiments, evaluates them under research-lab-grade statistical rigor (Diebold-Mariano + block-bootstrap → BH-FDR + adversarial replication → CPCV + Probability of Backtest Overfitting + Deflated Sharpe + Romano-Wolf → hierarchical Bayesian shrinkage), and persists findings with full provenance.
+**Reviewer in a hurry?** Read [TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md) first — it's a one-page brief with the 5-minute evaluation path.
 
-The system answers one question: **for which (regime, asset, method) combinations does a layered forecasting stack produce a lift that survives every layer of the methodology — Diebold-Mariano significance, bootstrap CI, BH-FDR, full-test / placebo / block-holdout adversarial replication, Romano-Wolf stepdown, Deflated Sharpe, Combinatorial Purged CV, and a Bayesian posterior with BF_10 ≥ 10?**
+AutoSignal-X is an **autonomous research apparatus** that detects when its own predictions are illusions. Five model layers + an agentic research loop discover conditional predictive structure in liquid daily ETF prices; a 9-stage statistical hardening pipeline (DM + bootstrap → BH-FDR → adversarial replication → CPCV → PBO → Deflated Sharpe → Romano-Wolf → hierarchical Bayesian → strict bar) grades every promoted finding before it ships. The contribution is the methodology and the agent that operates it — not any single trade.
+
+The submission directly addresses three questions from the Deeter AI Researcher JD:
+
+- **Q1 — long-horizon memory for dynamic reasoning.** Persistent multi-form memory cell across sessions: `lessons.md` for narrative recall, `reports/agent/kg/{nodes,edges}.jsonl` for a structured knowledge graph (findings / methods / regimes / assets / mechanisms with `refines`/`refutes`/`generalizes` edges), and a grounded RAG index over the entire run corpus.
+- **Q3 — memory cell with human chat interface.** The cockpit's *Ask the Memory* panel runs cite-or-refuse RAG against the same corpus; off-corpus questions trigger a canonical refusal, every claim carries a citation back to its artifact.
+- **Q4 — autonomy with observability and steerability.** Every agent step is ledgered with `(round, step, content, session_id)`; every hypothesis is hash-committed in a pre-registration ledger before its experiment runs; the Theorist's confidence is calibrated against finding-survival outcomes (Brier + ECE); the strict survival bar is the conjunction of every gate. Replay mode reproduces every panel without an API key.
+
+It also contributes a **synthetic-known-answer benchmark** (`autosignalx eval synthetic`) where planted causal structure is injected into a synthetic universe so the apparatus' recall + false-discovery rate are themselves audited numbers, and a **capability-preserving ablation** (`autosignalx eval ablate-capability`) that reports which model layers carry marginal skill vs cost (Deeter Q2 — "where should compression happen?").
+
+The headline scientific question the system itself answers: **for which (regime, asset, method) combinations does a layered forecasting stack produce a lift that survives every gate?** Bundled answer: 1 of 1 promoted, 0 of 1 survives the strict bar — the apparatus correctly graded its own discovery as fragile, which is the design goal.
 
 ## Inputs and outputs
 
@@ -66,7 +76,7 @@ Summary:
 
 Two zero-install ways to see AutoSignal-X without cloning:
 
-- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — multi-page HTML rendering of every cockpit panel from the latest committed artifacts. No runtime; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
+- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — curated 20-page HTML rendering of the most reviewer-relevant cockpit panels from the latest committed artifacts (a subset of the live cockpit's 31 panels). No runtime, no API key required; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
 - **[Live cockpit](https://ai-research-aleksander2a.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
 
 Both deployments run from this same repo on the same branch.

@@ -85,6 +85,7 @@ def score_round(
     round_entries: list[dict[str, Any]],
     ledger_summary: str = "",
     provider: LLMProvider | None = None,
+    session_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the LLM judge on one round's entries; return the scores dict
     plus the rationale and timestamp. Defaults to the 'critic' role provider."""
@@ -102,6 +103,7 @@ def score_round(
         ],
         step="trace_eval",
         round=round_number,
+        session_id=session_id,
     )
     parsed = _safe_parse_json(raw)
     # Coerce to ints where possible
@@ -132,7 +134,10 @@ def score_session(
     running_summary_parts = []
     for rd in sorted(by_round.keys()):
         ledger_summary = "\n".join(running_summary_parts[-10:])
-        score = score_round(rd, by_round[rd], ledger_summary=ledger_summary, provider=provider)
+        score = score_round(
+            rd, by_round[rd], ledger_summary=ledger_summary,
+            provider=provider, session_id=session_id,
+        )
         score["session_id"] = session_id
         scores.append(score)
         running_summary_parts.append(f"round {rd}: {by_round[rd][0].get('step', '?')}")
