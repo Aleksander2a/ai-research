@@ -48,6 +48,94 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
   <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
 </div>
 
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_336b84d3e3a9 <span class='cite'>chronos2_multivariate</span></h3>
+  <p style='margin:6px 0'>On asset TLT inside regime 0, method `chronos2_multivariate` beats naive on the cached forecast slice under the DM + block-bootstrap gate (p=0.0020, skill=0.0633).</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0633</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0020</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0915, 0.3239]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>42</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': 'TLT', 'regime_id': 0}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_b39c742f4449 <span class='cite'>chronos2_multivariate</span></h3>
+  <p style='margin:6px 0'>On asset TLT inside regime 3, method `chronos2_multivariate` beats naive on the cached forecast slice under the DM + block-bootstrap gate (p=0.0398, skill=0.0539).</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0539</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0398</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0047, 0.1974]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>407</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': 'TLT', 'regime_id': 3}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_8a5317b8b398 <span class='cite'>chronos2_univariate</span></h3>
+  <p style='margin:6px 0'>On asset TLT inside regime 0, method `chronos2_univariate` beats naive on the cached forecast slice under the DM + block-bootstrap gate (p=0.0181, skill=0.0575).</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0575</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0181</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0154, 0.2894]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>42</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': 'TLT', 'regime_id': 0}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_b38c6394a5fe <span class='cite'>tlt_regime3_dxy_only</span></h3>
+  <p style='margin:6px 0'>In regime 3—characterized by extreme dominance of the US dollar (DX-Y.NYB) and elevated volatility (^VIX)—TLT, despite its low eigenvector centrality, exhibits heightened sensitivity to dollar strength due to its role as a safe-haven asset. A chronos2_multivariate model for TLT that includes only DX-Y.NYB as a covariate will outperform both the full multivariate model and the naive baseline specifically in this regime, because extraneous macro variables dilute the strong inverse relationship between the dollar and long-duration Treasuries during flight-to-safety episodes.</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.1009</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0142</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0323, 0.4386]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>115</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': None, 'regime_id': None}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_abedb3261bd3 <span class='cite'>tlt_regime3_dxy_naive_blend</span></h3>
+  <p style='margin:6px 0'>In regime 3—where the US dollar (DX-Y.NYB) is the dominant macro driver and market stress (VIX) is elevated—TLT, a low-centrality but high-betweenness asset, may benefit from a hybrid signal that blends naive momentum with dollar sensitivity. This reflects flight-to-quality dynamics where rate expectations are overridden by liquidity-driven flows proxied by DXY.</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0683</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0042</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0545, 0.2910]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>115</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': None, 'regime_id': None}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_3eb10d54f55f <span class='cite'>tlt_regime3_dxy_naive_ensemble</span></h3>
+  <p style='margin:6px 0'>In regime 3—where the US Dollar (DX-Y.NYB) is overwhelmingly dominant (importance 0.189) and SPY exhibits high centrality—TLT, despite its low eigenvector centrality, may show improved predictability when using a naive ensemble that blends its own lagged returns with DXY movements, because regime 3 likely reflects a 'risk-off + strong dollar' state where TLT and DXY move in tandem. This effect may be missed by pure multivariate models due to over-regularization.</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0607</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0032</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0540, 0.2546]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>115</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': None, 'regime_id': None}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_8a446564ee92 <span class='cite'>tlt_regime3_dxy_conditional_chronos2</span></h3>
+  <p style='margin:6px 0'>In regime 3—where the US Dollar (DX-Y.NYB) is the dominant macro driver and market stress (VIX) is elevated—TLT exhibits strong inverse sensitivity to the dollar. A multivariate model for TLT that conditions on DX-Y.NYB only during regime 3 should outperform both unconditional multivariate and univariate baselines.</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.1009</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0142</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0323, 0.4386]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>115</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': None, 'regime_id': None}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
+<div class='card'>
+  <h3 style='margin:0 0 6px 0'>f_c3a3c0300a24 <span class='cite'>tlt_regime3_dxy_naive_chronos2_ensemble</span></h3>
+  <p style='margin:6px 0'>In regime 3—where the US Dollar (DX-Y.NYB) is overwhelmingly the top macro feature and TLT shows low centrality—ensembling a naive forecast with a DX-Y.NYB-only Chronos2 model specifically for TLT should outperform either component alone, as the regime reflects a distinct risk-off state where both momentum persistence and dollar-driven flight-to-quality matter.</p>
+  <div class='metric'><div class='label'>Skill vs naive</div><div class='value'>0.0663</div></div>
+  <div class='metric'><div class='label'>p-value (DM)</div><div class='value'>0.0021</div></div>
+  <div class='metric'><div class='label'>Bootstrap CI</div><div class='value'>[0.0598, 0.2618]</div></div>
+  <div class='metric'><div class='label'>n</div><div class='value'>115</div></div>
+  <div class='metric'><div class='label'>Filters</div><div class='value' style='font-size:1em'>{'asset': None, 'regime_id': None}</div></div>
+  <div class='metric'><div class='label'>Replications</div><div class='value'>1</div></div>
+</div>
+
 </div>
 <div class="footer">
 Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>

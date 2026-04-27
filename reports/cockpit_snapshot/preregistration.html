@@ -36,7 +36,152 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="active">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="">Synthetic benchmark</a><a href="ablation.html" class="">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a><a href="reproducibility.html" class="">Reproducibility</a></nav>
 
 <div class="container">
-<p class='empty'>No pre-registrations. Run <code>autosignalx agent run --mode lab</code> (the lab-mode verifier auto-registers each hypothesis).</p>
+<h1>Pre-registration ledger</h1><p class='caption'>Every hypothesis hash-committed before its experiment runs. Resolutions are appended to a separate file so registration history is never rewritten.</p><div class='card'><div class='metric'><div class='label'>Registered</div><div class='value'>19</div></div><div class='metric'><div class='label'>Resolved</div><div class='value'>0</div></div><div class='metric'><div class='label'>Open</div><div class='value'>19</div></div></div><div class='card'><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>id</th>
+      <th>method</th>
+      <th>filters</th>
+      <th>registered_at</th>
+      <th>status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>p_52534836aa76</td>
+      <td>efa_dxy_bridge_focus</td>
+      <td>{'asset': 'EFA', 'regime_id': None}</td>
+      <td>2026-04-27T11:33:21+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_018956ccdef9</td>
+      <td>unknown</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>2026-04-27T11:34:48+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_e2dea592d4b5</td>
+      <td>chronos2_multivariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 0}</td>
+      <td>2026-04-27T11:36:15+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_9cac5cc2f211</td>
+      <td>chronos2_multivariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 3}</td>
+      <td>2026-04-27T11:36:15+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_028799849399</td>
+      <td>chronos2_univariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 0}</td>
+      <td>2026-04-27T11:36:18+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_f79b746ee709</td>
+      <td>gld_dxy_isolate</td>
+      <td>{'asset': 'GLD', 'regime_id': None}</td>
+      <td>2026-04-27T12:00:20+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_786af73211a6</td>
+      <td>hyg_spy_tlt_parsimonious</td>
+      <td>{'asset': 'HYG', 'regime_id': None}</td>
+      <td>2026-04-27T12:44:03+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_aaae60df2301</td>
+      <td>regime3_dxy_naive_blend</td>
+      <td>{'asset': 'SPY', 'regime_id': None}</td>
+      <td>2026-04-27T12:55:14+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_e417d151dc6b</td>
+      <td>efa_regime1_dxy_only</td>
+      <td>{'asset': 'EFA', 'regime_id': None}</td>
+      <td>2026-04-27T12:59:16+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_b2fb9502916a</td>
+      <td>gld_regime2_naive_uni_blend</td>
+      <td>{'asset': 'GLD', 'regime_id': None}</td>
+      <td>2026-04-27T13:03:45+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_dbe8553d6cea</td>
+      <td>tlt_regime3_dxy_only</td>
+      <td>{'asset': 'TLT', 'regime_id': None}</td>
+      <td>2026-04-27T13:08:19+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_1e462be177ee</td>
+      <td>tlt_regime3_dxy_naive_blend</td>
+      <td>{'asset': 'TLT', 'regime_id': None}</td>
+      <td>2026-04-27T13:26:24+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_df45cb1b79ea</td>
+      <td>efa_regime1_dxy_only_chronos2</td>
+      <td>{'asset': 'EFA', 'regime_id': None}</td>
+      <td>2026-04-27T13:28:22+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_928b17b04af9</td>
+      <td>gld_regime2_naive_uni_blend</td>
+      <td>{'asset': 'GLD', 'regime_id': None}</td>
+      <td>2026-04-27T13:33:20+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_9753571f5adf</td>
+      <td>tlt_regime3_dxy_naive_ensemble</td>
+      <td>{'asset': 'TLT', 'regime_id': None}</td>
+      <td>2026-04-27T13:35:04+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_be1d9e018876</td>
+      <td>tlt_regime3_dxy_conditional_chronos2</td>
+      <td>{'asset': 'TLT', 'regime_id': None}</td>
+      <td>2026-04-27T13:50:30+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_6f50ed8a9baf</td>
+      <td>efa_regime1_dxy_chronos2_univariate_cov</td>
+      <td>{'asset': 'EFA', 'regime_id': None}</td>
+      <td>2026-04-27T13:53:43+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_20b66fd9aba3</td>
+      <td>naive</td>
+      <td>{'asset': 'GLD', 'regime_id': 2}</td>
+      <td>2026-04-27T13:55:29+00:00</td>
+      <td>open</td>
+    </tr>
+    <tr>
+      <td>p_d99f3c8da4bb</td>
+      <td>tlt_regime3_dxy_naive_chronos2_ensemble</td>
+      <td>{'asset': 'TLT', 'regime_id': None}</td>
+      <td>2026-04-27T13:58:48+00:00</td>
+      <td>open</td>
+    </tr>
+  </tbody>
+</table></div>
 </div>
 <div class="footer">
 Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>

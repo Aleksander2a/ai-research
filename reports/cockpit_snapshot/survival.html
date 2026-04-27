@@ -36,7 +36,7 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="active">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="">Synthetic benchmark</a><a href="ablation.html" class="">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a><a href="reproducibility.html" class="">Reproducibility</a></nav>
 
 <div class="container">
-<h1>Survival Analysis</h1><p class='caption'>Every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). A red X is a research insight, not a failure.</p><div class='card'><div class='metric'><div class='label'>Promoted</div><div class='value'>1</div></div><div class='metric'><div class='label'>Survive FDR</div><div class='value'>1/1</div></div><div class='metric'><div class='label'>Survive block-holdout</div><div class='value'>0/1</div></div><div class='metric'><div class='label'>Survive all attacks</div><div class='value'>0/1</div></div></div><div class='card'><strong>Zero of the promoted findings survive every attack.</strong> The hardening surfaced exactly which fragility each finding has -- the methodology is the artifact, not the count.</div><div class='card'><table class="dataframe data-table">
+<h1>Survival Analysis</h1><p class='caption'>Every promoted finding re-evaluated under BH-FDR + adversarial replication (full-test, placebo regime-shuffle, 50/50 block-holdout). A red X is a research insight, not a failure.</p><div class='card'><div class='metric'><div class='label'>Promoted</div><div class='value'>9</div></div><div class='metric'><div class='label'>Survive FDR</div><div class='value'>9/9</div></div><div class='metric'><div class='label'>Survive block-holdout</div><div class='value'>0/9</div></div><div class='metric'><div class='label'>Survive all attacks</div><div class='value'>0/9</div></div></div><div class='card'><strong>Zero of the promoted findings survive every attack.</strong> The hardening surfaced exactly which fragility each finding has -- the methodology is the artifact, not the count.</div><div class='card'><table class="dataframe data-table">
   <thead>
     <tr style="text-align: right;">
       <th>finding_id</th>
@@ -61,6 +61,102 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
       <td>✅</td>
       <td>✅</td>
       <td>✅</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_336b84d3e3a9</td>
+      <td>chronos2_multivariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 0}</td>
+      <td>0.0020</td>
+      <td>0.0093</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_b39c742f4449</td>
+      <td>chronos2_multivariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 3}</td>
+      <td>0.0398</td>
+      <td>0.0398</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_8a5317b8b398</td>
+      <td>chronos2_univariate</td>
+      <td>{'asset': 'TLT', 'regime_id': 0}</td>
+      <td>0.0181</td>
+      <td>0.0232</td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_b38c6394a5fe</td>
+      <td>tlt_regime3_dxy_only</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>0.0142</td>
+      <td>0.0213</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_abedb3261bd3</td>
+      <td>tlt_regime3_dxy_naive_blend</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>0.0042</td>
+      <td>0.0094</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_3eb10d54f55f</td>
+      <td>tlt_regime3_dxy_naive_ensemble</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>0.0032</td>
+      <td>0.0094</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_8a446564ee92</td>
+      <td>tlt_regime3_dxy_conditional_chronos2</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>0.0142</td>
+      <td>0.0213</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>—</td>
+      <td>❌</td>
+      <td>❌</td>
+    </tr>
+    <tr>
+      <td>f_c3a3c0300a24</td>
+      <td>tlt_regime3_dxy_naive_chronos2_ensemble</td>
+      <td>{'asset': None, 'regime_id': None}</td>
+      <td>0.0021</td>
+      <td>0.0093</td>
+      <td>✅</td>
+      <td>❌</td>
+      <td>—</td>
       <td>❌</td>
       <td>❌</td>
     </tr>

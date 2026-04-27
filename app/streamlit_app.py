@@ -1649,15 +1649,93 @@ def render_backtest_arena() -> None:
     portfolio = pd.read_parquet(portfolio_path)
     portfolio["timestamp"] = pd.to_datetime(portfolio["timestamp"])
 
+    # Per-strategy activity summary: makes intentional cash-holding visible.
+    # Without this, a strategy that goes flat for years (because no promoted
+    # finding's regime is currently active) reads visually as "missing data".
+    st.subheader("Strategy activity summary")
+    activity_rows = []
+    for s, sdf in portfolio.groupby("strategy", observed=True):
+        sdf = sdf.sort_values("timestamp")
+        active_mask = sdf["return"].fillna(0).abs() > 1e-12
+        n_bars = int(len(sdf))
+        n_active = int(active_mask.sum())
+        first_active = sdf.loc[active_mask, "timestamp"].min() if n_active else None
+        last_active = sdf.loc[active_mask, "timestamp"].max() if n_active else None
+        activity_rows.append({
+            "Strategy": s,
+            "Bars total": n_bars,
+            "Bars active": n_active,
+            "Active %": f"{(n_active / n_bars * 100):.1f}%" if n_bars else "—",
+            "First active day": first_active.date() if first_active is not None else "—",
+            "Last active day": last_active.date() if last_active is not None else "—",
+            "End equity": float(sdf["equity"].iloc[-1]) if not sdf.empty else float("nan"),
+        })
+    st.dataframe(
+        pd.DataFrame(activity_rows),
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.caption(
+        "**Reading the activity column.** A strategy with low Active % held cash "
+        "for most bars *by design* -- e.g. `FindingDriven` only trades the "
+        "(asset, regime) cells listed in `findings.jsonl`, and `RegimeGated` "
+        "only deploys when the current regime has a promoted finding. When no "
+        "finding's regime is active, both correctly hold cash, so their equity "
+        "curve is flat for that span. A flat line is **intentional inactivity**, "
+        "not missing data."
+    )
+
     st.subheader("Equity curves")
     pivot = portfolio.pivot(index="timestamp", columns="strategy", values="equity")
-    st.line_chart(pivot)
+    try:
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+        for col in pivot.columns:
+            series = pivot[col].dropna()
+            fig.add_trace(go.Scatter(
+                x=series.index, y=series.values, mode="lines", name=str(col),
+                hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>equity=%{{y:.4f}}<extra></extra>",
+                line={"width": 1.6},
+            ))
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Equity (start = 1.0)",
+            template="plotly_white",
+            hovermode="x unified",
+            height=460,
+            legend={"orientation": "h", "yanchor": "bottom", "y": 1.02},
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:  # noqa: BLE001
+        st.line_chart(pivot)
 
     st.subheader("Drawdown")
     eq = pivot
     peak = eq.cummax()
     drawdown = eq / peak - 1.0
-    st.area_chart(drawdown)
+    try:
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+        for col in drawdown.columns:
+            series = drawdown[col].dropna()
+            fig.add_trace(go.Scatter(
+                x=series.index, y=series.values, mode="lines", name=str(col),
+                fill="tozeroy", opacity=0.4,
+                hovertemplate=f"<b>{col}</b><br>%{{x|%Y-%m-%d}}<br>drawdown=%{{y:.2%}}<extra></extra>",
+            ))
+        fig.update_layout(
+            xaxis_title="Date",
+            yaxis_title="Drawdown",
+            template="plotly_white",
+            hovermode="x unified",
+            height=380,
+            yaxis={"tickformat": ".0%"},
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:  # noqa: BLE001
+        st.area_chart(drawdown)
 
     st.caption(
         "Equity normalised to 1.0 at run start; drawdown is the fraction "
@@ -2663,13 +2741,16 @@ def render_headline() -> None:
             st.warning(
                 f"**0 of {n_findings} promoted findings survive every gate.** "
                 "The hardening exposed exactly the fragility each finding has — "
-                "for example, the bundled finding `f_9395cd1bd1be` (TLT, regime 3, "
-                "chronos2_multivariate) passes BH-FDR + full-test + placebo but "
-                "fails 50/50 block-holdout: the lift is concentrated in the "
-                "first half of the test window and does not corroborate in the "
-                "second half. This is the apparatus correctly grading its own "
-                "discovery, not a failure mode — the gates exist precisely to "
-                "expose this kind of fragility before any trade is placed."
+                "every promoted candidate on this universe converges into a "
+                "TLT / regime-3 / DXY family whose lift is concentrated in the "
+                "first half of the test window (regime 3 spans 2021-02 to "
+                "2022-10) and does not corroborate in the second half, so "
+                "block-holdout rejects every variant. This is the apparatus "
+                "correctly grading its own discoveries as fragile, not a failure "
+                "mode — the gates exist precisely to expose this kind of "
+                "fragility before any trade is placed. The synthetic-known-answer "
+                "benchmark on the right is the matching positive control showing "
+                "the apparatus *can* find structure when it exists."
             )
         else:
             st.success(

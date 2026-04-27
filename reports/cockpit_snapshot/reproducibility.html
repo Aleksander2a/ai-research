@@ -36,7 +36,44 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="">Synthetic benchmark</a><a href="ablation.html" class="">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a><a href="reproducibility.html" class="active">Reproducibility</a></nav>
 
 <div class="container">
-<p class='empty'>No badge committed. Run <code>autosignalx snapshot build</code> or open the cockpit's Reproducibility panel.</p>
+<h1>Reproducibility badge</h1><p class='caption'>Cryptographic fingerprint of the cockpit state: git + env + per-artifact SHA-256 + a single bundle hash. Two badges with the same bundle hash produce the same panels.</p><div class='card'><div class='metric'><div class='label'>Bundle hash</div><div class='value' style='font-family:monospace'>745f825ca745</div></div><div class='metric'><div class='label'>Artifacts</div><div class='value'>53</div></div><div class='metric'><div class='label'>Replay mode</div><div class='value'>False</div></div><div class='metric'><div class='label'>Generated</div><div class='value' style='font-size:0.95em'>2026-04-27T14:13:24+00:00</div></div></div><div class='card'><h2 style='margin-top:0'>Git</h2><p>Commit <code>1dddd352949db82a5b26972901e729a707ad4340</code> on <code>claude/mystifying-wing-8bd66f</code> · dirty=True</p></div><div class='card'><h2 style='margin-top:0'>Library versions</h2><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>library</th>
+      <th>version</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>langgraph</td>
+      <td>?</td>
+    </tr>
+    <tr>
+      <td>numpy</td>
+      <td>2.4.4</td>
+    </tr>
+    <tr>
+      <td>pandas</td>
+      <td>3.0.2</td>
+    </tr>
+    <tr>
+      <td>scikit-learn</td>
+      <td>1.8.0</td>
+    </tr>
+    <tr>
+      <td>scipy</td>
+      <td>1.17.1</td>
+    </tr>
+    <tr>
+      <td>statsmodels</td>
+      <td>0.14.6</td>
+    </tr>
+    <tr>
+      <td>torch</td>
+      <td>2.11.0+cpu</td>
+    </tr>
+  </tbody>
+</table></div>
 </div>
 <div class="footer">
 Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>

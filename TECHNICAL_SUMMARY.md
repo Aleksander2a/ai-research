@@ -84,22 +84,39 @@ not a marketing claim.
    committed at `reports/agent/capability_ablation.json`.
 5. **Synthetic-known-answer benchmark.** Plant causal structure into a
    synthetic universe; measure per-gate recall + FDR. On the bundled
-   configuration (planted skill 0.18, 12 distractors, 6 trials):
-   DM-only recall 67% / FDR 0%, strict-bar recall 22% / FDR 0% — the
-   apparatus is conservative by design.
+   configuration (planted skill 0.30, 12 distractors, 8 trials):
+   DM-only recall 100 % / FDR 0 %, strict-bar recall 94 % / FDR 0 % —
+   the apparatus recovers planted structure when it exists.
 
 ## What's honest
 
-- The single promoted finding (`f_9395cd1bd1be`: TLT, regime 3,
-  chronos2_multivariate, p=0.040, skill +5.4%) **fails block-holdout**.
-  The hardening surfaced exactly the fragility the gate was built to
-  catch. This is the design goal: the apparatus correctly graded its
-  own discovery as fragile.
+- The apparatus has produced **9 promoted findings** on the bundled
+  universe across one initial single-LLM session, an exhaustive
+  (method × asset × regime) sweep, and three lab-mode agent sessions
+  (Qwen3-Max theorist + GLM-4.7-Flash specialists + DeepSeek-V3
+  adjudicator). Every one is a TLT / regime-3 / DXY variation; the
+  agent converged hard on this anchor cell. **0 of 9 survive the
+  strict bar; 0 of 9 even survive the simpler block-holdout test.**
+  The lift on each is concentrated in 2021-Q1 → 2022-Q3 and does not
+  corroborate after that. The hardening surfaced exactly the
+  fragility the gates were built to catch — this is the design goal,
+  not a failure mode.
 - No backtested signal-driven strategy beats passive SPY on
-  risk-adjusted returns over 2021–2025 (`Backtest Arena` panel),
-  reported with full paired-bootstrap CI. Honest negative result.
-- Replay mode is deterministic; the bundled session is reproduced
-  exactly without an API key, so the published numbers are auditable.
+  risk-adjusted returns over 2021-2025 (`Backtest Arena` panel),
+  reported with full paired-bootstrap CI. The `FindingDriven` and
+  `RegimeGated` strategies hold cash from 2022-10 onwards because no
+  promoted finding's regime is active in regime 2 (the dominant
+  2023-2025 regime). The cockpit panel surfaces this with a
+  per-strategy activity summary so the flat segment reads as
+  intentional cash-holding, not missing data.
+- Cumulative LLM spend across all live sessions: **\$0.247** out of
+  the \$20 budget. Replay mode reproduces every cockpit panel
+  deterministically without an API key, so the published numbers are
+  auditable.
+- The agent's predicted-confidence calibration is currently poor
+  (Brier 0.49, ECE 0.70 on the findings where a `predicted_effect`
+  block was emitted) — a clear target for the next agent-scaffold
+  iteration.
 
 ## What's intentionally not yet there
 

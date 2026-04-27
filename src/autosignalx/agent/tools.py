@@ -8,7 +8,6 @@ fast (no model retraining per hypothesis) and reproducible."""
 from __future__ import annotations
 
 import math
-from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -32,15 +31,34 @@ def _load_regime_labels() -> pd.DataFrame:
 
 
 def _load_signal_ranking() -> pd.DataFrame:
-    """Most recently modified ranking parquet under reports/signals/."""
+    """Per-(regime, feature) ranking with the original L3 schema.
+
+    Prefers the canonical ``signal_ranking.parquet`` (single-fit per-regime
+    permutation-importance ranking). Falls back to the most recent parquet
+    only if that canonical file is absent and the candidate has the
+    expected ``rank`` / ``feature`` / ``importance`` columns -- avoiding
+    the previous foot-gun where ``signal_stability.parquet`` (different
+    schema, ``mean_rank`` instead of ``rank``) was loaded by mtime."""
     signals_dir = settings.reports_dir / "signals"
-    paths: list[Path] = (
-        list(signals_dir.glob("*.parquet")) if signals_dir.exists() else []
-    )
-    if not paths:
+    canonical = signals_dir / "signal_ranking.parquet"
+    if canonical.exists():
+        return pd.read_parquet(canonical)
+    if not signals_dir.exists():
         return pd.DataFrame()
-    p = max(paths, key=lambda x: x.stat().st_mtime)
-    return pd.read_parquet(p)
+    candidates = sorted(
+        signals_dir.glob("*.parquet"),
+        key=lambda x: x.stat().st_mtime,
+        reverse=True,
+    )
+    required = {"feature", "regime_id", "rank", "importance"}
+    for p in candidates:
+        try:
+            df = pd.read_parquet(p)
+        except Exception:  # noqa: BLE001
+            continue
+        if required <= set(df.columns):
+            return df
+    return pd.DataFrame()
 
 
 def _load_centrality() -> pd.DataFrame:

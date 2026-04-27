@@ -36,7 +36,7 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="">Synthetic benchmark</a><a href="ablation.html" class="">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="active">Chat corpus</a><a href="reproducibility.html" class="">Reproducibility</a></nav>
 
 <div class="container">
-<h1>Chat corpus</h1><p class='caption'>The retrieval index that powers <em>Ask the Memory</em>. Every chunk has a stable <code>citation_id</code> the LLM must cite verbatim or refuse.</p><div class='card'><h2 style='margin-top:0'>Index breakdown</h2><table><tr><th>Kind</th><th>Count</th></tr><tr><td>finding</td><td>1</td></tr><tr><td>ledger</td><td>16</td></tr><tr><td>lesson</td><td>6</td></tr><tr><td>regime_graph</td><td>8</td></tr><tr><td>self_critique</td><td>1</td></tr><tr><td>signal_stability</td><td>12</td></tr><tr><td>survival</td><td>1</td></tr><tr><td>telemetry</td><td>4</td></tr><tr><td>trace_quality</td><td>3</td></tr></table></div><div class='card'><h2 style='margin-top:0'>Sample chunks (first 60)</h2><table class="dataframe data-table">
+<h1>Chat corpus</h1><p class='caption'>The retrieval index that powers <em>Ask the Memory</em>. Every chunk has a stable <code>citation_id</code> the LLM must cite verbatim or refuse.</p><div class='card'><h2 style='margin-top:0'>Index breakdown</h2><table><tr><th>Kind</th><th>Count</th></tr><tr><td>backtest</td><td>6</td></tr><tr><td>finding</td><td>1</td></tr><tr><td>ledger</td><td>16</td></tr><tr><td>lesson</td><td>6</td></tr><tr><td>regime_graph</td><td>8</td></tr><tr><td>self_critique</td><td>1</td></tr><tr><td>signal_stability</td><td>12</td></tr><tr><td>survival</td><td>1</td></tr><tr><td>telemetry</td><td>4</td></tr><tr><td>trace_quality</td><td>3</td></tr></table></div><div class='card'><h2 style='margin-top:0'>Sample chunks (first 60)</h2><table class="dataframe data-table">
   <thead>
     <tr style="text-align: right;">
       <th>citation_id</th>
@@ -224,6 +224,36 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
       <td>telemetry:total</td>
       <td>telemetry</td>
       <td>Total LLM spend across 16 calls: $0.0562.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/BuyAndHoldSPY</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy BuyAndHoldSPY performance: Sharpe ratio=0.8969, CAGR=0.1491, max drawdown=-0.2450, turnover=0.0008.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/EqualWeightUniverse</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy EqualWeightUniverse performance: Sharpe ratio=0.6932, CAGR=0.0830, max drawdown=-0.2530, turnover=0.0008.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/TopKLong(k=3)</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy TopKLong(k=3) performance: Sharpe ratio=0.5136, CAGR=0.0695, max drawdown=-0.1907, turnover=0.0694.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/LongShortKK(k=2)</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy LongShortKK(k=2) performance: Sharpe ratio=-0.1739, CAGR=-0.0180, max drawdown=-0.2331, turnover=0.0833.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/RegimeGated(k=3)</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy RegimeGated(k=3) performance: Sharpe ratio=-0.1841, CAGR=-0.0221, max drawdown=-0.1880, turnover=0.0245.</td>
+    </tr>
+    <tr>
+      <td>backtest:20260427T112916-8628af/FindingDriven</td>
+      <td>backtest</td>
+      <td>Backtest run 20260427T112916-8628af -- strategy FindingDriven performance: Sharpe ratio=-0.2990, CAGR=-0.0210, max drawdown=-0.1931, turnover=0.0080.</td>
     </tr>
     <tr>
       <td>ledger:r0/theorist</td>
