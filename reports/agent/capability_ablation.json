@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-27T09:48:59+00:00",
-  "n_methods_available": 6,
+  "generated_at": "2026-04-27T14:10:38+00:00",
+  "n_methods_available": 18,
   "rows": [
     {
       "variant": "baseline_only",
@@ -35,7 +35,7 @@
         "arima",
         "chronos2_univariate"
       ],
-      "n_findings": 0,
+      "n_findings": 1,
       "n_rows": 30096,
       "mean_mae": 4.3297311352234,
       "marginal_skill": -0.07010209021218117,
@@ -50,7 +50,7 @@
         "chronos2_univariate",
         "chronos2_multivariate"
       ],
-      "n_findings": 1,
+      "n_findings": 4,
       "n_rows": 40128,
       "mean_mae": 4.372023593778287,
       "marginal_skill": -0.04229245855488717,
@@ -65,7 +65,7 @@
         "chronos2_univariate",
         "chronos2_multivariate"
       ],
-      "n_findings": 1,
+      "n_findings": 4,
       "n_rows": 40128,
       "mean_mae": 4.372023593778287,
       "marginal_skill": 0.0,
@@ -80,7 +80,7 @@
         "chronos2_univariate",
         "chronos2_multivariate"
       ],
-      "n_findings": 1,
+      "n_findings": 4,
       "n_rows": 40128,
       "mean_mae": 4.372023593778287,
       "marginal_skill": 0.0,
@@ -95,7 +95,7 @@
         "chronos2_univariate",
         "chronos2_multivariate"
       ],
-      "n_findings": 1,
+      "n_findings": 4,
       "n_rows": 40128,
       "mean_mae": 4.372023593778287,
       "marginal_skill": 0.0,

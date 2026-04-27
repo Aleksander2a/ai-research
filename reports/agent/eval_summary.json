@@ -1,17 +1,17 @@
 {
-  "evaluated_at": "2026-04-27T09:53:19+00:00",
-  "n_findings": 1,
-  "n_ledger_entries": 16,
-  "n_trace_quality": 3,
-  "n_survival_records": 1,
+  "evaluated_at": "2026-04-27T14:10:11+00:00",
+  "n_findings": 9,
+  "n_ledger_entries": 180,
+  "n_trace_quality": 24,
+  "n_survival_records": 9,
   "calibration": {
-    "n": 1,
+    "n": 6,
     "brier": 0.48999999999999994,
-    "ece": 0.7
+    "ece": 0.7000000000000001
   },
   "red_team": {
-    "n": 1,
-    "n_survives": 1
+    "n": 9,
+    "n_survives": 4
   },
   "coherence": [
     {
@@ -29,6 +29,62 @@
       "lineage_branching_factor": 1.0,
       "theme_persistence_entropy": 1.0986122886681096,
       "coherence_score": 0.909861228866811
+    },
+    {
+      "session_id": "20260427-2500372e",
+      "n_rounds": 5,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
+    },
+    {
+      "session_id": "20260427-352b3d33",
+      "n_rounds": 3,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
+    },
+    {
+      "session_id": "20260427-6a269b3f",
+      "n_rounds": 5,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
+    },
+    {
+      "session_id": "20260427-dc4f5483",
+      "n_rounds": 7,
+      "lessons_uptake": 0.16666666666666666,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.23333333333333334
+    },
+    {
+      "session_id": "20260427-dea16a9f",
+      "n_rounds": 5,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": 0.5623351446188083,
+      "coherence_score": 0.7062335144618809
+    },
+    {
+      "session_id": "20260427-e59405a4",
+      "n_rounds": 1,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
+    },
+    {
+      "session_id": "20260427-f67e2815",
+      "n_rounds": 1,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
     }
   ],
   "prompt_scores_present": false

@@ -137,8 +137,35 @@ class LiveProvider:
                     lc_messages.append(SystemMessage(content=m["content"]))
                 else:
                     lc_messages.append(HumanMessage(content=m["content"]))
-            with telemetry_mod.CallTimer() as timer:
-                response = self.client.invoke(lc_messages)
+            # Live LLM calls occasionally return transient 429s ("Model busy")
+            # from DeepInfra. We retry with exponential backoff so a single
+            # transient failure doesn't tear down a multi-minute lab session.
+            import time as _time
+            attempts = 0
+            max_attempts = 8
+            base_delay = 6.0
+            while True:
+                attempts += 1
+                try:
+                    with telemetry_mod.CallTimer() as timer:
+                        response = self.client.invoke(lc_messages)
+                    break
+                except Exception as exc:  # noqa: BLE001
+                    msg = str(exc)
+                    is_rate_limited = (
+                        "429" in msg
+                        or "RateLimitError" in type(exc).__name__
+                        or "rate limit" in msg.lower()
+                        or "Model busy" in msg
+                    )
+                    if not is_rate_limited or attempts >= max_attempts:
+                        raise
+                    delay = base_delay * (2 ** (attempts - 1))
+                    print(
+                        f"[llm] transient rate-limit on step={step} round={round}; "
+                        f"retrying in {delay:.0f}s (attempt {attempts}/{max_attempts})"
+                    )
+                    _time.sleep(delay)
             content = response.content if isinstance(response.content, str) else str(response.content)
             cache_file.write_text(content, encoding="utf-8")
             # Mine token usage from response.response_metadata when available;

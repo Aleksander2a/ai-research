@@ -1,0 +1,8 @@
+{
+  "start": "2026-01-01",
+  "end": "2026-12-31",
+  "description": "Held-out forward window: discovery is forbidden inside this range; opened once at publication time.",
+  "locked_at": "2026-04-27T11:30:17+00:00",
+  "opened": false,
+  "lock_hash": "b68675c5850e0545"
+}

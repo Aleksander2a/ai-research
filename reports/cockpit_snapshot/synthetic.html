@@ -36,7 +36,7 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="active">Synthetic benchmark</a><a href="ablation.html" class="">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a><a href="reproducibility.html" class="">Reproducibility</a></nav>
 
 <div class="container">
-<h1>Synthetic-known-answer benchmark</h1><p class='caption'>The apparatus is given a synthetic regime-switching market with deliberately planted causal structure plus distractor null cells. Each row is one ablation (single vs debate vs lab; memory off vs on); the metrics are recall (planted truths recovered), false-discovery rate (distractors promoted), and net signal-to-noise.</p><div class='card'><div class='metric'><div class='label'>Planted truths</div><div class='value'>3</div></div><div class='metric'><div class='label'>Distractors</div><div class='value'>12</div></div><div class='metric'><div class='label'>n_trials</div><div class='value'>6</div></div><div class='metric'><div class='label'>Generated at</div><div class='value' style='font-size:0.95em'>2026-04-27T09:47:03+00:00</div></div></div><div class='card'><table class="dataframe data-table">
+<h1>Synthetic-known-answer benchmark</h1><p class='caption'>The apparatus is given a synthetic regime-switching market with deliberately planted causal structure plus distractor null cells. Each row is one ablation (single vs debate vs lab; memory off vs on); the metrics are recall (planted truths recovered), false-discovery rate (distractors promoted), and net signal-to-noise.</p><div class='card'><div class='metric'><div class='label'>Planted truths</div><div class='value'>4</div></div><div class='metric'><div class='label'>Distractors</div><div class='value'>12</div></div><div class='metric'><div class='label'>n_trials</div><div class='value'>8</div></div><div class='metric'><div class='label'>Generated at</div><div class='value' style='font-size:0.95em'>2026-04-27T11:42:32+00:00</div></div></div><div class='card'><table class="dataframe data-table">
   <thead>
     <tr style="text-align: right;">
       <th>gate</th>
@@ -48,39 +48,39 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
   <tbody>
     <tr>
       <td>dm_only</td>
-      <td>0.6667</td>
+      <td>1.0000</td>
       <td>0.0000</td>
-      <td>2.0000</td>
+      <td>4.0000</td>
     </tr>
     <tr>
       <td>+fdr</td>
-      <td>0.6667</td>
+      <td>1.0000</td>
       <td>0.0000</td>
-      <td>2.0000</td>
+      <td>4.0000</td>
     </tr>
     <tr>
       <td>+adversarial</td>
-      <td>0.2222</td>
+      <td>0.9375</td>
       <td>0.0000</td>
-      <td>0.6667</td>
+      <td>3.7500</td>
     </tr>
     <tr>
       <td>+rw</td>
-      <td>0.2222</td>
+      <td>0.9375</td>
       <td>0.0000</td>
-      <td>0.6667</td>
+      <td>3.7500</td>
     </tr>
     <tr>
       <td>+bayes</td>
-      <td>0.2222</td>
+      <td>0.9375</td>
       <td>0.0000</td>
-      <td>0.6667</td>
+      <td>3.7500</td>
     </tr>
     <tr>
       <td>strict</td>
-      <td>0.2222</td>
+      <td>0.9375</td>
       <td>0.0000</td>
-      <td>0.6667</td>
+      <td>3.7500</td>
     </tr>
   </tbody>
 </table></div>

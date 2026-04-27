@@ -2,6 +2,21 @@
 
 ## Executive summary (state on `main`)
 
+> **Bundled answer.** The apparatus has produced 9 promoted findings on
+> the default 8-ETF universe across one initial single-LLM session, an
+> exhaustive (method × asset × regime) sweep, and three lab-mode agent
+> sessions (Qwen3-Max theorist + GLM-4.7-Flash skeptic/specialist +
+> DeepSeek-V3 adjudicator), and the strict-bar hardening pipeline rejected
+> every one of them. **0 of 9 survive the conjunction of every gate;
+> 0 of 9 survive even the simpler block-holdout test alone.** Every
+> promoted lift converges into a TLT / regime-3 / DXY family whose
+> apparent skill is concentrated in the 2021-Q1 → 2022-Q3 sub-window
+> where regime 3 exists. The methodology stack correctly grades all of
+> them as fragile. On the controlled synthetic-known-answer benchmark
+> (planted skill 0.30, 12 distractors, 8 trials), the strict bar
+> recovers 94 % of planted truths at 0 % false-discovery rate — the
+> apparatus is conservative by design, not broken.
+
 * **What it is.** A 5-layer modular AI research system (Forecasting / Representation / Reasoning / Relational / Agentic) that discovers conditional predictive structure in liquid daily ETF prices and grades every claim through a defendable methodology stack. The contribution is the apparatus, not any single discovery.
 * **Methodology stack (every promoted finding passes every gate).**
   1. Diebold-Mariano (Newey-West HAC) + block-bootstrap CI on per-row losses — the initial promotion gate.
@@ -748,6 +763,135 @@ Eleven new panels that turn the cockpit from "viewer" into "research-lab dashboa
 | **Reproducibility** | Git hash, env, library versions, replay flag, per-artifact SHA-256 hashes, single bundle hash. |
 
 Per-finding cards now expose **factor residualization** (regress per-bar loss-diff on macro factors; report residual mean and t-statistic), **what-if** (skill stratified by prediction-magnitude quartile), and **outlier removal** (drop top 1% absolute-diff rows; recompute skill). Implementation in `eval/counterfactual.py`. Statistical power dashboard in `eval/power.py`. Reproducibility module in `autosignalx/reproducibility.py` with a `write_badge()` API and a clickable "refresh badge" button in the cockpit.
+
+## Findings produced and graded
+
+The apparatus has now produced **9 promoted findings** on the bundled
+universe — one from the original single-LLM session, three from an
+exhaustive (method × asset × regime) sweep, and five authored by the
+lab-mode agent across three multi-round sessions (Qwen3-Max theorist
++ GLM-4.7-Flash skeptic/specialist + DeepSeek-V3 adjudicator). Every
+one was passed through the full hardening pipeline (BH-FDR +
+adversarial replication + Combinatorial Purged CV + Probability of
+Backtest Overfitting + Deflated Sharpe + Romano-Wolf joint stepdown +
+hierarchical Normal-Normal Bayesian shrinkage + RedTeam asset-shuffle
++ time-shift attacks).
+
+| Finding | Method | Filters | p | skill | FDR | full | placebo | block | RW | DSR | Bayes | **strict** |
+|---|---|---|---:|---:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
+| `f_9395cd1bd1be` | chronos2_multivariate | TLT, regime 3 | 0.040 | +5.4% | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | **❌** |
+| `f_336b84d3e3a9` | chronos2_multivariate | TLT, regime 0 | 0.002 | +6.3% | ✅ | ✅ | — | ❌ | ❌ | ❌ | ✅ | **❌** |
+| `f_b39c742f4449` | chronos2_multivariate | TLT, regime 3 | 0.040 | +5.4% | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ | **❌** |
+| `f_8a5317b8b398` | chronos2_univariate | TLT, regime 0 | 0.018 | +5.7% | ✅ | ✅ | — | ❌ | ❌ | ❌ | ❌ | **❌** |
+| `f_b38c6394a5fe` | tlt_regime3_dxy_only | global | 0.014 | +10.1% | ✅ | ❌ | — | ❌ | — | — | ✅ | **❌** |
+| `f_abedb3261bd3` | tlt_regime3_dxy_naive_blend | global | 0.004 | +9.6% | ✅ | ❌ | — | ❌ | — | — | ✅ | **❌** |
+| `f_3eb10d54f55f` | tlt_regime3_dxy_naive_ensemble | global | 0.003 | +9.4% | ✅ | ❌ | — | ❌ | — | — | ✅ | **❌** |
+| `f_8a446564ee92` | tlt_regime3_dxy_conditional_chronos2 | global | 0.014 | +10.1% | ✅ | ❌ | — | ❌ | — | — | ✅ | **❌** |
+| `f_c3a3c0300a24` | tlt_regime3_dxy_naive_chronos2_ensemble | global | 0.002 | +9.7% | ✅ | ❌ | — | ❌ | — | — | ✅ | **❌** |
+
+**0 of 9 survive the strict bar; 0 of 9 even survive block-holdout.**
+All nine pass BH-FDR (each per-finding p is below 0.05). Only the four
+findings tied to specific (asset, regime) cells run through full-test
++ placebo replication; the five agent-authored methods register their
+findings against the global slice (no asset / regime filter on the
+finding row), and Romano-Wolf + DSR are skipped for those because the
+per-finding loss-difference series cannot be isolated cleanly. The
+block-holdout 50/50 split rejects every single one.
+
+### Why every finding fails block-holdout
+
+The regime detector, fit on full 2010-2025 data, partitions the test
+window into three contiguous chunks: regime 0 (Jan-Feb 2021,
+37 days), regime 3 (Feb 2021 → Oct 2022, 408 days), regime 2
+(Oct 2022 → Dec 2025, 812 days). The TLT / regime-3 lift exists in
+the *first* half of the test window's regime-3 stretch (early 2021 →
+late 2021); the second half (early 2022 → Oct 2022) does not
+corroborate it. Block-holdout splits each finding's slice 50/50 by
+`forecast_origin` and demands both halves promote independently; both
+halves fail on the second half.
+
+### Convergence pattern observed in the agent loop
+
+Every lab-mode session followed the same arc. In round 0 the Theorist
+proposed a TLT / regime-3 hypothesis with DXY as the load-bearing
+covariate and auto-promotion fired. In round 1 it proposed an
+EFA / regime-1 variant; the experiment did not promote because
+regime 1 has zero occurrences in the test window. In round 2 it
+proposed GLD / regime-2 (the dominant 2023-2025 regime) with a
+naive-blend prior that consistently underperformed. In round 3 it
+returned to TLT / regime-3 and promoted another variant. This held
+even when the specialist mix was swapped from Statistician to
+Quant + Economist in the third session.
+
+The driver is the agent's persistent memory: `lessons.md` and the
+existing `findings.jsonl` give the Theorist strong priors that
+TLT / regime-3 carries skill, so each fresh session re-anchors there.
+The specialist roles correctly flag multiple-comparison risk in their
+consultations, but the Theorist's prompt does not currently penalise
+re-exploring the same anchor — a clear avenue for the next iteration
+of the agent scaffold.
+
+### Per-run telemetry
+
+| Session | Theorist + Specialists | Auto-promoted | Cost (USD) |
+|---|---|---|---|
+| `20260425-14c7446d` (initial single-LLM session, before the sweep) | Kimi-K2.6 single-mode | 1 (`f_9395cd1bd1be`) | $0.011 |
+| Exhaustive sweep (`20260427-829d024a-sweep`) | n/a (deterministic) | 3 (the f_336.., f_b39.., f_8a53.. cells) | $0.000 |
+| Lab session 1 (`20260427-2500372e`) | Qwen3-Max + statistician | 1 (`tlt_regime3_dxy_only`) | $0.058 |
+| Lab session 2 (`20260427-6a269b3f`) | Qwen3-Max + statistician | 2 (`..._naive_blend`, `..._naive_ensemble`) | $0.034 |
+| Lab session 3 (`20260427-dea16a9f`) | Qwen3-Max + quant + economist | 2 (`..._conditional_chronos2`, `..._naive_chronos2_ensemble`) | $0.035 |
+
+Cumulative LLM spend across all sessions ever (including
+post-session score-traces / consolidate / self-critique calls): **$0.247
+USD**. `reports/agent/telemetry.jsonl` carries 152 calls in total, every
+row with `role` and `session_id` populated (an earlier defect that
+recorded `role="unknown"` was fixed before the live runs and the
+historical telemetry was back-filled to match the new schema).
+
+The **Agent Calibration** panel reports a Brier score of 0.49 and an
+Expected Calibration Error of 0.70 on the small set of findings where
+the Theorist actually emitted a `predicted_effect` block — a genuinely
+poor calibration baseline that the next iteration of the agent
+scaffold should target. The **Agent Coherence** panel reports a
+composite coherence score of 0.63 averaged across 7 sessions; the
+agent stays focused (low theme-persistence entropy), uptakes lessons
+from earlier sessions (high lessons-uptake), and the lineage DAG has
+moderate branching.
+
+### Backtested behaviour with the full finding set
+
+`reports/backtest/runs/20260427T141235-b7b0f1` is the latest run and
+uses the full 9-finding `findings.jsonl`. The `FindingDriven` strategy
+now trades five additional cells (the agent-authored TLT / regime-3
+variants), but its overall behaviour is materially unchanged because
+all five live in the same regime that the original bundled finding
+covered: the strategy still holds cash from 2022-10-08 onwards
+because no promoted finding's regime is active in regime 2 (the
+dominant post-2022 regime). The cockpit's `Backtest Arena` panel
+surfaces this explicitly via a per-strategy activity summary (bars
+total, bars active, active percentage, first / last active day).
+
+A strict-bar survivor on this universe would require either (a) a
+regime-2 finding — the agent tested several and none promoted, (b) a
+different asset or method family that breaks out of the
+TLT / regime-3 anchor, or (c) a re-fit of the regime detector that
+puts post-2022 data into the same labelling space as the 2021-2022
+lift. None emerged from the four sessions run.
+
+### What this says about the system
+
+The user-facing claim is **not** "we found nine signals." It is:
+
+> *The apparatus produced nine candidate findings on the bundled
+> universe across replay-mode and live LLM sessions, all converging
+> on a single (asset, regime, mechanism) anchor; the hardening
+> stack rejected every one of them as fragile under block-holdout.
+> The methodology layer is the artifact; the apparatus correctly
+> graded its own discoveries.*
+
+The synthetic-known-answer benchmark above is the matching
+positive-control evidence that the apparatus *can* find structure
+when structure exists.
 
 ## Future work
 
