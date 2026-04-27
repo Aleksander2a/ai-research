@@ -110,7 +110,7 @@ def make_planner_node(specialists: tuple[str, ...] = DEFAULT_SPECIALISTS, record
                 ),
             },
         ]
-        raw = provider.chat(msgs, step="principal_investigator", round=rd)
+        raw = provider.chat(msgs, step="principal_investigator", round=rd, session_id=state.get("session_id"))
         decision = _safe_parse_json(raw)
         next_role = str(decision.get("next_specialist", "")).strip().lower()
         if next_role not in specialists:
@@ -146,6 +146,7 @@ def make_specialist_node(record_replay: bool = False):
             payload=payload,
             record_replay=record_replay,
             round_n=rd,
+            session_id=state.get("session_id"),
         )
         entry = {
             "round": rd,

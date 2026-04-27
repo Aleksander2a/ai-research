@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoSignal-X — Capability ablation</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+       margin: 0; padding: 0; background: #fafafa; color: #1a1a1a; }
+.topnav { display: flex; gap: 0; background: #1a1a1a; padding: 0; flex-wrap: wrap; }
+.topnav a { color: #ddd; text-decoration: none; padding: 12px 18px; font-weight: 500; transition: background 0.15s; }
+.topnav a:hover { background: #333; color: #fff; }
+.topnav a.active { background: #ff4b4b; color: #fff; }
+.container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+h1 { font-weight: 700; margin: 0 0 8px 0; }
+h2 { margin-top: 32px; border-bottom: 1px solid #e0e0e0; padding-bottom: 8px; }
+.caption { color: #666; font-size: 0.95em; margin-bottom: 24px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; background: #fff; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid #eee; font-size: 0.92em; }
+th { background: #f5f5f5; font-weight: 600; }
+tr:hover td { background: #fcfcfc; }
+.card { background: #fff; padding: 16px 20px; border-radius: 6px;
+        margin-bottom: 16px; box-shadow: 0 1px 2px rgba(0,0,0,0.04); border: 1px solid #eee; }
+.metric { display: inline-block; margin-right: 28px; margin-bottom: 8px; }
+.metric .label { color: #666; font-size: 0.8em; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric .value { font-size: 1.5em; font-weight: 700; }
+.empty { color: #999; font-style: italic; padding: 16px; background: #f5f5f5; border-radius: 4px; }
+.footer { text-align: center; color: #999; padding: 24px; font-size: 0.85em; }
+code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.92em; }
+.cite { background: #fff4e6; padding: 1px 6px; border-radius: 3px; font-family: monospace; font-size: 0.85em; }
+</style>
+</head>
+<body>
+<nav class="topnav"><a href="index.html" class="">Overview</a><a href="forecasts.html" class="">Forecasts</a><a href="regimes.html" class="">Regimes</a><a href="regime_graph.html" class="">Regime graph</a><a href="signal_stability.html" class="">Signal stability</a><a href="findings.html" class="">Findings</a><a href="survival.html" class="">Survival</a><a href="bayesian.html" class="">Bayesian</a><a href="calibration.html" class="">Calibration</a><a href="red_team.html" class="">RedTeam</a><a href="coherence.html" class="">Coherence</a><a href="coverage.html" class="">Coverage</a><a href="preregistration.html" class="">Pre-Registration</a><a href="holdout.html" class="">Holdout vault</a><a href="synthetic.html" class="">Synthetic benchmark</a><a href="ablation.html" class="active">Capability ablation</a><a href="backtest.html" class="">Backtest</a><a href="agent.html" class="">Agent</a><a href="chat.html" class="">Chat corpus</a><a href="reproducibility.html" class="">Reproducibility</a></nav>
+
+<div class="container">
+<h1>Capability-preserving ablation</h1><p class='caption'>For each layer (L1 forecasting / L2 regime / L3 signal / L4 graph / L5 agent), drop that layer's contribution to the survival pipeline and re-grade. Marginal-skill column is the lift the layer provides; cells with high cost / low marginal-skill are compression candidates.</p><div class='card'><table class="dataframe data-table">
+  <thead>
+    <tr style="text-align: right;">
+      <th>variant</th>
+      <th>layers</th>
+      <th>methods</th>
+      <th>n_findings</th>
+      <th>n_rows</th>
+      <th>mean_mae</th>
+      <th>marginal_skill</th>
+      <th>cost_proxy</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>baseline_only</td>
+      <td>L1 floor</td>
+      <td>[naive]</td>
+      <td>0</td>
+      <td>10032</td>
+      <td>4.2542</td>
+      <td>NaN</td>
+      <td>337413</td>
+    </tr>
+    <tr>
+      <td>+arima</td>
+      <td>L1 + ARIMA</td>
+      <td>[naive, arima]</td>
+      <td>0</td>
+      <td>20064</td>
+      <td>4.2596</td>
+      <td>-0.0055</td>
+      <td>337413</td>
+    </tr>
+    <tr>
+      <td>+chronos_univ</td>
+      <td>L1 + Chronos-2 univariate</td>
+      <td>[naive, arima, chronos2_univariate]</td>
+      <td>0</td>
+      <td>30096</td>
+      <td>4.3297</td>
+      <td>-0.0701</td>
+      <td>934638</td>
+    </tr>
+    <tr>
+      <td>+multivariate</td>
+      <td>L1 full</td>
+      <td>[naive, arima, chronos2_univariate, chronos2_multivariate]</td>
+      <td>1</td>
+      <td>40128</td>
+      <td>4.3720</td>
+      <td>-0.0423</td>
+      <td>934638</td>
+    </tr>
+    <tr>
+      <td>+regime</td>
+      <td>L1 + L2 (regime gating)</td>
+      <td>[naive, arima, chronos2_univariate, chronos2_multivariate]</td>
+      <td>1</td>
+      <td>40128</td>
+      <td>4.3720</td>
+      <td>0.0000</td>
+      <td>934638</td>
+    </tr>
+    <tr>
+      <td>+graph</td>
+      <td>+ L4 (cross-asset filter)</td>
+      <td>[naive, arima, chronos2_univariate, chronos2_multivariate]</td>
+      <td>1</td>
+      <td>40128</td>
+      <td>4.3720</td>
+      <td>0.0000</td>
+      <td>934638</td>
+    </tr>
+    <tr>
+      <td>full_stack</td>
+      <td>L1 + L2 + L3 + L4 + L5</td>
+      <td>[naive, arima, chronos2_univariate, chronos2_multivariate]</td>
+      <td>1</td>
+      <td>40128</td>
+      <td>4.3720</td>
+      <td>0.0000</td>
+      <td>934638</td>
+    </tr>
+  </tbody>
+</table></div>
+</div>
+<div class="footer">
+Static snapshot of AutoSignal-X cockpit · regenerate with <code>autosignalx snapshot build</code>
+</div>
+</body>
+</html>

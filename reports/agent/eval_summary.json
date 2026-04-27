@@ -1,0 +1,35 @@
+{
+  "evaluated_at": "2026-04-27T09:53:19+00:00",
+  "n_findings": 1,
+  "n_ledger_entries": 16,
+  "n_trace_quality": 3,
+  "n_survival_records": 1,
+  "calibration": {
+    "n": 1,
+    "brier": 0.48999999999999994,
+    "ece": 0.7
+  },
+  "red_team": {
+    "n": 1,
+    "n_survives": 1
+  },
+  "coherence": [
+    {
+      "session_id": "20260425-14c7446d",
+      "n_rounds": 1,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 0.0,
+      "theme_persistence_entropy": -0.0,
+      "coherence_score": 0.65
+    },
+    {
+      "session_id": "20260426-9708e027",
+      "n_rounds": 3,
+      "lessons_uptake": 1.0,
+      "lineage_branching_factor": 1.0,
+      "theme_persistence_entropy": 1.0986122886681096,
+      "coherence_score": 0.909861228866811
+    }
+  ],
+  "prompt_scores_present": false
+}

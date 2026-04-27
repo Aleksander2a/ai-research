@@ -2530,43 +2530,374 @@ def render_reproducibility_panel() -> None:
         st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
-PANELS = {
-    "Overview": render_overview,
-    "Data": render_data,
-    "Forecast Arena": render_forecast_arena,
-    "Regime Explorer": render_regime_explorer,
-    "Signal Discovery Lab": render_signal_lab,
-    "Cross-Asset Graph": render_cross_asset_graph,
-    "Regime-Conditioned Graph": render_regime_graph,
-    "Signal Stability": render_signal_stability,
-    "Backtest Arena": render_backtest_arena,
-    "Custom Study": render_custom_study,
-    "Coverage Map": render_coverage_map,
-    "Statistical Power": render_statistical_power,
-    "Counterfactual Cards": render_counterfactual_cards,
-    "Bayesian Evidence": render_bayesian_evidence,
-    "Specialist Council": render_specialist_council,
-    "Pre-Registration": render_preregistration,
-    "Holdout Vault": render_holdout_vault,
-    "Agent Calibration": render_calibration_panel,
-    "RedTeam Attacks": render_red_team_panel,
-    "Agent Coherence": render_coherence_panel,
-    "Agent Console": render_agent_console,
-    "Auto-Play Replay": render_auto_play,
-    "Findings": render_findings,
-    "Lineage": render_lineage,
-    "Self-Critique": render_self_critique,
-    "Survival Analysis": lambda: render_survival_analysis(),
-    "Lessons & Memory": render_lessons,
-    "Telemetry": render_telemetry,
-    "Sessions": render_sessions,
-    "Reproducibility": render_reproducibility_panel,
-    "Ask the Memory": render_ask_the_memory,
-}
+def render_headline() -> None:
+    """The reviewer's first-look panel.
+
+    One screen, four metrics, the strict-bar verdict, and a 5-minute
+    reading path. Every other panel exists to show the math behind one of
+    the numbers on this page."""
+    st.title("AutoSignal-X")
+    st.caption(
+        "Autonomous research apparatus that grades its own discoveries through "
+        "a 9-stage methodology stack. Submission for the Deeter Analytics "
+        "AI Researcher role."
+    )
+
+    # Pull the headline numbers from disk. Each block degrades gracefully.
+    rd = settings.reports_dir
+    findings_path = rd / "agent" / "findings.jsonl"
+    survival_path = rd / "agent" / "survival.jsonl"
+    synth_path = rd / "agent" / "synthetic_benchmark.json"
+    cap_path = rd / "agent" / "capability_ablation.json"
+    badge_path = rd / "reproducibility_badge.json"
+
+    n_findings = 0
+    n_strict = 0
+    if findings_path.exists():
+        with findings_path.open("r", encoding="utf-8") as fh:
+            n_findings = sum(1 for line in fh if line.strip())
+    survives_strict = []
+    if survival_path.exists():
+        with survival_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if rec.get("survives_all_strict"):
+                    n_strict += 1
+                survives_strict.append(rec)
+
+    synth_summary: dict = {}
+    if synth_path.exists():
+        import contextlib
+
+        with contextlib.suppress(Exception):
+            synth_summary = json.loads(synth_path.read_text(encoding="utf-8"))
+    dm_recall = strict_recall = strict_fdr = None
+    if synth_summary:
+        for row in synth_summary.get("ablations", []):
+            if row.get("gate") == "dm_only":
+                dm_recall = row.get("mean_recall")
+            if row.get("gate") == "strict":
+                strict_recall = row.get("mean_recall")
+                strict_fdr = row.get("mean_fdr")
+
+    cols = st.columns(4)
+    cols[0].metric("Promoted findings", n_findings)
+    cols[1].metric("Survive strict bar", f"{n_strict}/{n_findings}" if n_findings else "—")
+    if strict_recall is not None:
+        cols[2].metric(
+            "Synthetic recall (strict)",
+            f"{strict_recall:.0%}",
+            delta=(
+                f"DM-only: {dm_recall:.0%}"
+                if dm_recall is not None
+                else None
+            ),
+        )
+    else:
+        cols[2].metric("Synthetic recall (strict)", "—")
+    if strict_fdr is not None:
+        cols[3].metric("Synthetic FDR (strict)", f"{strict_fdr:.0%}")
+    else:
+        cols[3].metric("Synthetic FDR (strict)", "—")
+
+    st.divider()
+    cols = st.columns(2)
+    with cols[0]:
+        st.subheader("Strict-bar verdict")
+        if n_findings == 0:
+            st.info("No findings yet. Run `autosignalx agent run --mode lab`.")
+        elif n_strict == 0:
+            st.warning(
+                f"**0 of {n_findings} promoted findings survive every gate.** "
+                "The hardening exposed exactly the fragility each finding has -- "
+                "the methodology is the artifact, not the count."
+            )
+        else:
+            st.success(
+                f"**{n_strict} of {n_findings} promoted findings survive every gate.** "
+                "These passed FDR + adversarial replication + Romano-Wolf + "
+                "Deflated Sharpe + hierarchical Bayesian (BF₁₀ ≥ 10)."
+            )
+
+    with cols[1]:
+        st.subheader("Where compression should happen")
+        if cap_path.exists():
+            try:
+                cap = json.loads(cap_path.read_text(encoding="utf-8"))
+                rows = cap.get("rows") or []
+                if rows:
+                    df = pd.DataFrame([
+                        {
+                            "variant": r.get("variant"),
+                            "Mean MAE": r.get("mean_mae"),
+                            "Marg. skill": r.get("marginal_skill"),
+                            "n findings": r.get("n_findings"),
+                            "Cost (KB)": int(r.get("cost_proxy", 0) / 1024),
+                        }
+                        for r in rows
+                    ])
+                    st.dataframe(df, use_container_width=True, hide_index=True)
+                    st.caption(
+                        "Layer-drop ablation. Direct answer to Deeter Q2 "
+                        "(“smallest capability-preserving system”)."
+                    )
+                else:
+                    st.info("Run `autosignalx eval ablate-capability`.")
+            except Exception:  # noqa: BLE001
+                st.info("Run `autosignalx eval ablate-capability`.")
+        else:
+            st.info("Run `autosignalx eval ablate-capability` to populate this card.")
+
+    st.divider()
+    st.subheader("How to read this cockpit in 5 minutes")
+    st.markdown(
+        """
+        1. **Survival Analysis** — see the strict bar's per-gate verdict on each
+           promoted finding. `survives_all_strict` is the conjunction of every
+           gate (FDR + adversarial + Romano-Wolf + Deflated Sharpe + Bayesian).
+        2. **Synthetic Benchmark** — same gates run on a controlled synthetic
+           universe with planted causal structure; per-gate recall + FDR.
+        3. **Capability Ablation** — drop each layer in turn; report marginal
+           MAE-skill vs cost-proxy bytes. The compression frontier.
+        4. **Specialist Council** — Phase 14 lab-mode multi-role consultation
+           feed + persistent KG memory (Deeter Q1).
+        5. **Reproducibility** — git + env + per-artifact SHA-256 + bundle hash
+           of the cockpit state you're seeing.
+
+        Full reading path: `TECHNICAL_SUMMARY.md` -> `REPORT.md` executive
+        summary -> the four cockpit panels above.
+        """
+    )
+
+    if badge_path.exists():
+        try:
+            badge = json.loads(badge_path.read_text(encoding="utf-8"))
+            st.caption(
+                f"Reproducibility bundle hash: "
+                f"`{badge.get('artifacts_bundle_hash', '?')}` "
+                f"(git: `{(badge.get('git') or {}).get('commit', '?')}`, "
+                f"replay: {badge.get('replay_mode', False)})"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def render_synthetic_benchmark() -> None:
+    """Phase 7 (added): synthetic-known-answer benchmark results."""
+    st.title("Synthetic Benchmark")
+    st.caption(
+        "Per-gate recall + FDR on a controlled universe with planted causal "
+        "structure. Grades the apparatus' own discriminative power."
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/synthetic_benchmark.json` produced by `autosignalx eval synthetic`.",
+        operations=(
+            "For each of N independent universes, plants P (asset, regime, method) "
+            "edges with a chosen MAE-vs-naive lift, surrounds them with D distractor "
+            "(no-signal) methods, then runs every gate (DM → +FDR → +adversarial "
+            "→ +Romano-Wolf → +Bayesian → strict) and reports recall (planted "
+            "truths recovered) and FDR (distractors promoted)."
+        ),
+        goal="Make the apparatus' own statistical sensitivity an audited number.",
+        interpretation=(
+            "Strict-bar **recall** should be substantially below DM-only recall (gates "
+            "are conservative); strict-bar **FDR** should be near zero (the gates' "
+            "promise). Gap between the two columns measures how much real signal you "
+            "trade off for selection-bias safety."
+        ),
+    )
+
+    p = settings.reports_dir / "agent" / "synthetic_benchmark.json"
+    if not p.exists():
+        st.warning(
+            "No synthetic benchmark results. Run "
+            "`autosignalx eval synthetic --n-trials 6 --planted-skill 0.18`."
+        )
+        return
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not parse synthetic_benchmark.json: {e}")
+        return
+
+    cols = st.columns(4)
+    cols[0].metric("Trials", data.get("n_trials", 0))
+    cols[1].metric("Planted truths / trial", data.get("planted_truths", 0))
+    cols[2].metric("Distractors / trial", data.get("distractors", 0))
+    cols[3].metric("Generated at", str(data.get("generated_at", ""))[:19])
+
+    rows = data.get("ablations") or []
+    df = pd.DataFrame(rows)
+    if not df.empty:
+        try:
+            import plotly.graph_objects as go
+
+            fig = go.Figure()
+            fig.add_trace(go.Bar(name="Recall", x=df["gate"], y=df["mean_recall"], marker_color="#00b894"))
+            fig.add_trace(go.Bar(name="FDR", x=df["gate"], y=df["mean_fdr"], marker_color="#d63031"))
+            fig.update_layout(
+                barmode="group",
+                yaxis_title="Mean across trials",
+                xaxis_title="Gate",
+                template="plotly_white",
+                height=380,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+        except Exception:  # noqa: BLE001
+            pass
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+def render_capability_ablation() -> None:
+    """Phase 16: smallest-capability-preserving ablation (Deeter Q2)."""
+    st.title("Capability Ablation")
+    st.caption(
+        "For each layer, drop its contribution and re-grade. The marginal-skill "
+        "vs cost-proxy frontier directly answers \"where should compression happen?\""
+    )
+
+    _panel_doc(
+        inputs="`reports/agent/capability_ablation.json` produced by `autosignalx eval ablate-capability`.",
+        operations=(
+            "Concatenates the cached ablation parquets, slices by `method` column, "
+            "then constructs progressively richer variants (baseline_only -> +arima "
+            "-> +chronos_univ -> +multivariate -> +regime -> +graph -> full_stack). "
+            "Each variant's MAE is computed on the union of methods it has access to; "
+            "marginal-skill = previous-variant-MAE − this-variant-MAE."
+        ),
+        goal=(
+            "Identify which model layers carry actual marginal predictive skill "
+            "and which are compression / distillation candidates."
+        ),
+        interpretation=(
+            "Variants with high marginal-skill / low cost-proxy are load-bearing. "
+            "Variants with negative marginal-skill (this layer made MAE worse) are "
+            "trivial compression candidates -- they cost bytes without lifting the "
+            "headline metric. Holding the column #findings constant tells you whether "
+            "the regime / graph / agent layers are doing useful conditioning even "
+            "when raw MAE doesn't move."
+        ),
+    )
+
+    p = settings.reports_dir / "agent" / "capability_ablation.json"
+    if not p.exists():
+        st.warning(
+            "No ablation results. Run `autosignalx eval ablate-capability`."
+        )
+        return
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:  # noqa: BLE001
+        st.error(f"Could not parse capability_ablation.json: {e}")
+        return
+
+    rows = data.get("rows") or []
+    if not rows:
+        st.info("Ablation produced no rows -- ensure `reports/ablations/` is populated.")
+        return
+    df = pd.DataFrame(rows)
+    df["cost_proxy_kb"] = (df["cost_proxy"] / 1024).round(1)
+    st.dataframe(
+        df[["variant", "layers", "n_findings", "mean_mae",
+            "marginal_skill", "cost_proxy_kb"]],
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    try:
+        import plotly.graph_objects as go
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=df["cost_proxy_kb"], y=df["mean_mae"], mode="lines+markers+text",
+            text=df["variant"], textposition="top right", line={"color": "#0984e3"},
+        ))
+        fig.update_layout(
+            xaxis_title="Cost proxy (KB)",
+            yaxis_title="Mean MAE (lower = better)",
+            template="plotly_white",
+            height=420,
+            title="Capability vs cost",
+        )
+        st.plotly_chart(fig, use_container_width=True)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+# ---- Sidebar grouping ----------------------------------------------------
+
+PANEL_SECTIONS = [
+    ("Headline", [
+        ("Headline", render_headline),
+    ]),
+    ("Data & Forecasts", [
+        ("Overview", render_overview),
+        ("Data", render_data),
+        ("Forecast Arena", render_forecast_arena),
+    ]),
+    ("Discovery (L2-L4)", [
+        ("Regime Explorer", render_regime_explorer),
+        ("Signal Discovery Lab", render_signal_lab),
+        ("Cross-Asset Graph", render_cross_asset_graph),
+        ("Regime-Conditioned Graph", render_regime_graph),
+        ("Signal Stability", render_signal_stability),
+    ]),
+    ("Strategy & Studies", [
+        ("Backtest Arena", render_backtest_arena),
+        ("Custom Study", render_custom_study),
+    ]),
+    ("Methodology", [
+        ("Survival Analysis", lambda: render_survival_analysis()),
+        ("Bayesian Evidence", render_bayesian_evidence),
+        ("Synthetic Benchmark", render_synthetic_benchmark),
+        ("Capability Ablation", render_capability_ablation),
+        ("Coverage Map", render_coverage_map),
+        ("Statistical Power", render_statistical_power),
+        ("Counterfactual Cards", render_counterfactual_cards),
+        ("Pre-Registration", render_preregistration),
+        ("Holdout Vault", render_holdout_vault),
+        ("RedTeam Attacks", render_red_team_panel),
+        ("Agent Calibration", render_calibration_panel),
+        ("Agent Coherence", render_coherence_panel),
+    ]),
+    ("Agent activity", [
+        ("Agent Console", render_agent_console),
+        ("Specialist Council", render_specialist_council),
+        ("Auto-Play Replay", render_auto_play),
+        ("Findings", render_findings),
+        ("Lineage", render_lineage),
+        ("Self-Critique", render_self_critique),
+        ("Lessons & Memory", render_lessons),
+        ("Telemetry", render_telemetry),
+        ("Sessions", render_sessions),
+    ]),
+    ("Reviewer", [
+        ("Reproducibility", render_reproducibility_panel),
+        ("Ask the Memory", render_ask_the_memory),
+    ]),
+]
+
+# Flat dict (preserved for compatibility with any external code that imported PANELS)
+PANELS = {name: fn for _, panels in PANEL_SECTIONS for name, fn in panels}
 
 
 # Streamlit executes the script top-to-bottom on every interaction.
-panel_name = st.sidebar.radio("Panel", list(PANELS.keys()))
+section_names = [s[0] for s in PANEL_SECTIONS]
+section_name = st.sidebar.radio(
+    "Section", section_names, index=0,
+    help="Sidebar groups -- start at Headline, walk down to Reviewer.",
+)
+panels_in_section = next(p for s, p in PANEL_SECTIONS if s == section_name)
+panel_name = st.sidebar.radio(
+    "Panel", [p[0] for p in panels_in_section], index=0, key=f"panel_for_{section_name}",
+)
 st.sidebar.divider()
 
 # Phase 2: study-scope selector. When set, study-aware panels (Forecast
@@ -2578,7 +2909,7 @@ try:
     _study_names = _list_studies()
 except Exception:  # noqa: BLE001
     _study_names = []
-_scope_options = ["(default)"] + _study_names
+_scope_options = ["(default)", *_study_names]
 _scope_choice = st.sidebar.selectbox(
     "Study scope",
     _scope_options,
@@ -2590,4 +2921,4 @@ st.session_state["active_study"] = (
 )
 
 st.sidebar.caption(f"AutoSignal-X v{__version__}")
-PANELS[panel_name]()
+dict(panels_in_section)[panel_name]()

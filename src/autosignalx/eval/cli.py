@@ -410,6 +410,95 @@ def pbo_cmd(
     console.print(f"  wrote {out_path}")
 
 
+@eval_app.command("synthetic")
+def synthetic_cmd(
+    n_trials: int = typer.Option(5, help="Number of independent synthetic universes."),
+    seed: int = typer.Option(0, help="Base seed; trial t uses seed + 1000*t."),
+    planted_cells: int = typer.Option(3, help="Number of planted (asset, regime, method) edges."),
+    distractor_cells: int = typer.Option(9, help="Number of distractor (no-signal) methods."),
+    planted_skill: float = typer.Option(0.20, help="Planted skill-vs-naive lift on truth cells."),
+    n_origins: int = typer.Option(80, help="Forecast origins per universe."),
+    n_assets: int = typer.Option(4, help="Synthetic universe size."),
+    n_regimes: int = typer.Option(2, help="Synthetic regime count."),
+) -> None:
+    """Synthetic-known-answer benchmark for the methodology stack.
+
+    Plants a known-true (asset, regime, method) edge in N synthetic
+    universes; surrounds it with distractor cells; runs every gate
+    (DM -> +FDR -> +adversarial -> +Romano-Wolf -> +Bayesian -> strict);
+    reports per-gate recall and FDR averaged across trials. Output is
+    written to ``reports/agent/synthetic_benchmark.json`` and rendered
+    by the cockpit's Synthetic Benchmark panel + the static snapshot."""
+    from autosignalx.eval.synthetic_benchmark import run_benchmark
+
+    console.print(
+        f"Running synthetic benchmark: n_trials={n_trials}, "
+        f"planted={planted_cells}, distractors={distractor_cells}, "
+        f"planted_skill={planted_skill:.2f}, n_origins={n_origins}, "
+        f"n_assets={n_assets}, n_regimes={n_regimes}"
+    )
+    summary = run_benchmark(
+        n_trials=n_trials, seed=seed,
+        planted_cells=planted_cells, distractor_cells=distractor_cells,
+        planted_skill=planted_skill, n_origins=n_origins,
+        n_assets=n_assets, n_regimes=n_regimes,
+    )
+    table = Table(title="Synthetic benchmark -- per-gate recall / FDR", header_style="bold")
+    table.add_column("Gate", style="cyan")
+    table.add_column("Mean recall", justify="right")
+    table.add_column("Mean FDR", justify="right")
+    table.add_column("Mean n_promoted", justify="right")
+    for row in summary["ablations"]:
+        table.add_row(
+            str(row["gate"]),
+            f"{row['mean_recall']:.2f}",
+            f"{row['mean_fdr']:.2f}",
+            f"{row['mean_n_promoted']:.1f}",
+        )
+    console.print(table)
+
+
+@eval_app.command("ablate-capability")
+def ablate_capability_cmd(
+    methods_per_layer: str = typer.Option(
+        "naive,arima,chronos2_univariate,chronos2_multivariate",
+        help="Methods that represent each layer's marginal contribution.",
+    ),
+) -> None:
+    """Phase 16 -- smallest-capability-preserving ablation.
+
+    For each candidate layer (L1 forecasting / L2 regime / L3 signal /
+    L4 graph / L5 agent), drop that layer's contribution to the gating
+    pipeline and re-grade promoted findings. The resulting marginal-
+    skill column tells the user which layers are load-bearing and
+    which can be compressed/distilled without losing signal.
+    Persists ``reports/agent/capability_ablation.json``."""
+    from autosignalx.eval.capability_ablation import run_capability_ablation
+
+    summary = run_capability_ablation(methods=[
+        m.strip() for m in methods_per_layer.split(",") if m.strip()
+    ])
+    if not summary.get("rows"):
+        console.print("[yellow]No ablation rows produced (need cached forecasts + findings).[/yellow]")
+        return
+    table = Table(title="Capability-preserving ablation", header_style="bold")
+    table.add_column("Variant", style="cyan")
+    table.add_column("Layers", overflow="fold")
+    table.add_column("# findings", justify="right")
+    table.add_column("Mean MAE", justify="right")
+    table.add_column("Marginal skill", justify="right")
+    table.add_column("Cost proxy", justify="right")
+    for row in summary["rows"]:
+        table.add_row(
+            str(row.get("variant")), str(row.get("layers", "")),
+            str(row.get("n_findings", "")),
+            f"{row.get('mean_mae', float('nan')):.4f}",
+            f"{row.get('marginal_skill', float('nan')):+.4f}",
+            f"{row.get('cost_proxy', 0):.0f}",
+        )
+    console.print(table)
+
+
 @eval_app.command("vault-init")
 def vault_init_cmd(
     start: str = typer.Argument(..., help="Vault start (YYYY-MM-DD)."),

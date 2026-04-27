@@ -28,9 +28,19 @@ PAGES = [
     ("signal_stability", "Signal stability"),
     ("findings", "Findings"),
     ("survival", "Survival"),
+    ("bayesian", "Bayesian"),
+    ("calibration", "Calibration"),
+    ("red_team", "RedTeam"),
+    ("coherence", "Coherence"),
+    ("coverage", "Coverage"),
+    ("preregistration", "Pre-Registration"),
+    ("holdout", "Holdout vault"),
+    ("synthetic", "Synthetic benchmark"),
+    ("ablation", "Capability ablation"),
     ("backtest", "Backtest"),
     ("agent", "Agent"),
     ("chat", "Chat corpus"),
+    ("reproducibility", "Reproducibility"),
 ]
 
 
@@ -619,6 +629,363 @@ def _page_chat(reports_dir: Path) -> tuple[str, int]:
     return body, 0
 
 
+# ---------- Phase 8/12/14/15/16 page builders ---------- #
+
+
+def _page_bayesian(reports_dir: Path) -> tuple[str, int]:
+    """Phase 12: render the per-finding posterior + Bayes factor table."""
+    findings = _read_jsonl(reports_dir / "agent" / "findings.jsonl")
+    survival = _read_jsonl(reports_dir / "agent" / "survival.jsonl")
+    if not findings:
+        return _empty_section("No promoted findings yet."), 0
+    rows = []
+    for r in survival:
+        b = r.get("bayesian") or {}
+        if not b:
+            continue
+        rows.append({
+            "finding_id": r.get("finding_id"),
+            "method": r.get("method"),
+            "n": b.get("n"),
+            "posterior_mean": b.get("posterior_mean"),
+            "posterior_sd": b.get("posterior_sd"),
+            "P(theta>0)": b.get("prob_positive"),
+            "BF_10": b.get("bayes_factor"),
+            "survives_bayes": r.get("survives_bayes"),
+        })
+    if not rows:
+        return _empty_section(
+            "No Bayesian fields in survival.jsonl. Run "
+            "<code>autosignalx agent harden</code> against current findings."
+        ), 0
+    body = (
+        "<h1>Bayesian evidence</h1>"
+        "<p class='caption'>Hierarchical Normal-Normal posterior with empirical-Bayes "
+        "shrinkage; Bayes factor BF_10 vs the null. Strict bar: BF_10 &ge; 10 and "
+        "P(&theta; &gt; 0) &ge; 0.95.</p>"
+        f"<div class='card'>{_df_to_html_table(pd.DataFrame(rows), max_rows=50)}</div>"
+    )
+    return body, 0
+
+
+def _page_calibration(reports_dir: Path) -> tuple[str, int]:
+    """Phase 15: confidence-vs-survival reliability bins."""
+    rows = _read_jsonl(reports_dir / "agent" / "calibration.jsonl")
+    if not rows:
+        return _empty_section(
+            "No calibration record. Run <code>autosignalx agent eval-suite</code>."
+        ), 0
+    rec = rows[-1]
+    bins = pd.DataFrame(rec.get("bins") or [])
+    summary = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>n</div><div class='value'>{rec.get('n', 0)}</div></div>"
+        f"<div class='metric'><div class='label'>Brier</div><div class='value'>{rec.get('brier', 0):.3f}</div></div>"
+        f"<div class='metric'><div class='label'>ECE</div><div class='value'>{rec.get('ece', 0):.3f}</div></div>"
+        f"<div class='metric'><div class='label'>Role</div><div class='value' style='font-size:1em'>{rec.get('role', '?')}</div></div>"
+        f"</div>"
+    )
+    body = (
+        "<h1>Agent calibration</h1>"
+        "<p class='caption'>Predicted confidence vs observed survival rate of the agent's findings. "
+        "Brier closer to 0 is better; ECE measures the average bin-level deviation from the identity line.</p>"
+        + summary
+        + f"<div class='card'>{_df_to_html_table(bins, max_rows=20)}</div>"
+    )
+    return body, 0
+
+
+def _page_red_team(reports_dir: Path) -> tuple[str, int]:
+    """Phase 15: asset-shuffle + time-shift attacks per finding."""
+    rows = _read_jsonl(reports_dir / "agent" / "red_team.jsonl")
+    if not rows:
+        return _empty_section(
+            "No RedTeam records. Run <code>autosignalx agent eval-suite</code>."
+        ), 0
+    flat = []
+    for r in rows:
+        a = r.get("asset_shuffle", {}) or {}
+        t = r.get("time_shift", {}) or {}
+        flat.append({
+            "finding_id": r.get("finding_id"),
+            "asset_shuffle_survives": a.get("survives"),
+            "promotable_elsewhere": a.get("promotable_elsewhere"),
+            "time_shift_promotable": t.get("promotable_after_shift"),
+            "time_shift_skill": t.get("skill"),
+            "survives_red_team": r.get("survives_red_team"),
+        })
+    body = (
+        "<h1>RedTeam attacks</h1>"
+        "<p class='caption'>Beyond Phase-5 (FDR + full-test + placebo + block-holdout): "
+        "asset-shuffle (re-test on every other asset in the same regime) and time-shift "
+        "(shift forecast_origin by 5 days). Both must survive.</p>"
+        f"<div class='card'>{_df_to_html_table(pd.DataFrame(flat), max_rows=50)}</div>"
+    )
+    return body, 0
+
+
+def _page_coherence(reports_dir: Path) -> tuple[str, int]:
+    """Phase 15: per-session lessons-uptake / branching / theme entropy."""
+    rows = _read_jsonl(reports_dir / "agent" / "coherence.jsonl")
+    if not rows:
+        return _empty_section(
+            "No coherence records. Run <code>autosignalx agent eval-suite</code>."
+        ), 0
+    df = pd.DataFrame(rows)
+    body = (
+        "<h1>Agent coherence</h1>"
+        "<p class='caption'>Per-session multi-horizon coherence: lessons uptake from earlier "
+        "sessions, lineage-DAG branching factor, theme-persistence entropy, composite score.</p>"
+        f"<div class='card'>{_df_to_html_table(df, max_rows=20)}</div>"
+    )
+    return body, 0
+
+
+def _page_coverage(reports_dir: Path) -> tuple[str, int]:
+    """Phase 14/16: hypothesis search-space coverage map."""
+    abl_dir = reports_dir / "ablations"
+    if not abl_dir.exists() or not list(abl_dir.glob("*.parquet")):
+        return _empty_section("No ablations to compute coverage."), 0
+    try:
+        from autosignalx.agent import eig as eig_mod
+        from autosignalx.agent import findings as findings_mod
+    except Exception as e:  # noqa: BLE001
+        return _empty_section(f"Coverage layer unavailable: {e}"), 0
+    frames = []
+    for fp in sorted(abl_dir.glob("*.parquet")):
+        try:
+            df = pd.read_parquet(fp)
+        except Exception:  # noqa: BLE001
+            continue
+        if "method" not in df.columns:
+            df = df.copy()
+            df["method"] = fp.stem
+        frames.append(df)
+    if not frames:
+        return _empty_section("No readable ablations."), 0
+    forecasts = pd.concat(frames, ignore_index=True)
+    rl_path = reports_dir / "regimes" / "kmeans.parquet"
+    if rl_path.exists() and "forecast_origin" in forecasts.columns:
+        try:
+            rl = pd.read_parquet(rl_path)
+            rl_join = rl[["timestamp", "regime_id"]].rename(columns={"timestamp": "forecast_origin"})
+            rl_join["forecast_origin"] = pd.to_datetime(rl_join["forecast_origin"])
+            forecasts["forecast_origin"] = pd.to_datetime(forecasts["forecast_origin"])
+            forecasts = forecasts.merge(rl_join, on="forecast_origin", how="left")
+        except Exception:  # noqa: BLE001
+            pass
+    if "asset" not in forecasts.columns or "method" not in forecasts.columns:
+        return _empty_section(
+            "Forecasts present but missing columns (`asset` / `method`); "
+            "coverage map needs the standard contract."
+        ), 0
+    methods = sorted(forecasts["method"].unique())
+    assets = sorted(forecasts["asset"].unique())
+    regimes = (
+        sorted(forecasts["regime_id"].dropna().astype(int).unique().tolist())
+        if "regime_id" in forecasts.columns else []
+    )
+    df = eig_mod.coverage_map(
+        forecasts=forecasts, methods=methods, assets=assets, regimes=regimes,
+        findings=findings_mod.load(),
+    )
+    if df.empty or "eig_score" not in df.columns:
+        return _empty_section(
+            "Coverage map produced no rows. Need at least one regime label "
+            "and a populated ablations cache."
+        ), 0
+    body = (
+        "<h1>Coverage map</h1>"
+        "<p class='caption'>Where has the agent looked? Each (method &times; asset &times; regime) "
+        "cell scored by Expected Information Gain (untested + sample-rich + not yet promoted = high).</p>"
+        f"<div class='card'>{_df_to_html_table(df.sort_values('eig_score', ascending=False), max_rows=80)}</div>"
+    )
+    return body, 0
+
+
+def _page_preregistration(reports_dir: Path) -> tuple[str, int]:
+    """Phase 8: hash-committed hypothesis ledger + resolutions."""
+    regs = _read_jsonl(reports_dir / "agent" / "preregistrations.jsonl")
+    resols = _read_jsonl(reports_dir / "agent" / "preregistration_resolutions.jsonl")
+    if not regs:
+        return _empty_section(
+            "No pre-registrations. Run <code>autosignalx agent run --mode lab</code> "
+            "(the lab-mode verifier auto-registers each hypothesis)."
+        ), 0
+    by_id = {r.get("preregistration_id"): r for r in resols}
+    flat = [{
+        "id": r.get("id"),
+        "method": r.get("method"),
+        "filters": r.get("filters"),
+        "registered_at": r.get("registered_at"),
+        "status": "open" if r.get("id") not in by_id else (
+            "promoted" if (by_id.get(r.get("id")) or {}).get("promoted") else "refuted"
+        ),
+    } for r in regs]
+    cols = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>Registered</div><div class='value'>{len(regs)}</div></div>"
+        f"<div class='metric'><div class='label'>Resolved</div><div class='value'>{len(by_id)}</div></div>"
+        f"<div class='metric'><div class='label'>Open</div><div class='value'>{len(regs) - len(by_id)}</div></div>"
+        f"</div>"
+    )
+    body = (
+        "<h1>Pre-registration ledger</h1>"
+        "<p class='caption'>Every hypothesis hash-committed before its experiment runs. "
+        "Resolutions are appended to a separate file so registration history is never rewritten.</p>"
+        + cols
+        + f"<div class='card'>{_df_to_html_table(pd.DataFrame(flat), max_rows=50)}</div>"
+    )
+    return body, 0
+
+
+def _page_holdout(reports_dir: Path) -> tuple[str, int]:
+    """Phase 8: holdout vault status + one-time results."""
+    vault_meta = reports_dir / "agent" / "holdout_vault" / "vault.json"
+    vault_results = reports_dir / "agent" / "holdout_vault" / "results.json"
+    if not vault_meta.exists():
+        return _empty_section(
+            "No holdout vault initialized. Run <code>autosignalx eval vault-init &lt;start&gt; &lt;end&gt;</code>."
+        ), 0
+    try:
+        meta = json.loads(vault_meta.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        meta = {}
+    state = "OPENED" if meta.get("opened") else "LOCKED"
+    summary = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>Start</div><div class='value' style='font-size:1.1em'>{meta.get('start', '?')}</div></div>"
+        f"<div class='metric'><div class='label'>End</div><div class='value' style='font-size:1.1em'>{meta.get('end', '?')}</div></div>"
+        f"<div class='metric'><div class='label'>Status</div><div class='value'>{state}</div></div>"
+        f"<div class='metric'><div class='label'>Lock hash</div><div class='value' style='font-size:1em;font-family:monospace'>{meta.get('lock_hash', '?')}</div></div>"
+        f"</div>"
+    )
+    results_html = ""
+    if vault_results.exists():
+        try:
+            res = json.loads(vault_results.read_text(encoding="utf-8"))
+            per = res.get("per_method_mae") or {}
+            skill = res.get("skill_vs_baseline") or {}
+            rows = [{
+                "method": m, "mae": per.get(m), "skill_vs_baseline": skill.get(m),
+            } for m in sorted(per)]
+            results_html = (
+                f"<h2>One-time evaluation</h2>"
+                f"<div class='card'>{_df_to_html_table(pd.DataFrame(rows), max_rows=20)}</div>"
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    body = (
+        "<h1>Holdout vault</h1>"
+        "<p class='caption'>Never-touched final test slice. Discovery code asserts no "
+        "leakage of forecast_origin into the locked range; "
+        "<code>autosignalx eval vault-open</code> is the one-time evaluation method.</p>"
+        + summary + results_html
+    )
+    return body, 0
+
+
+def _page_synthetic(reports_dir: Path) -> tuple[str, int]:
+    """Phase 7-style item: synthetic-known-answer benchmark results."""
+    p = reports_dir / "agent" / "synthetic_benchmark.json"
+    if not p.exists():
+        return _empty_section(
+            "No synthetic benchmark results. Run "
+            "<code>autosignalx eval synthetic --n-trials 1</code>."
+        ), 0
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return _empty_section("Could not parse synthetic_benchmark.json."), 0
+    rows = data.get("ablations") or []
+    head = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>Planted truths</div><div class='value'>{data.get('planted_truths', 0)}</div></div>"
+        f"<div class='metric'><div class='label'>Distractors</div><div class='value'>{data.get('distractors', 0)}</div></div>"
+        f"<div class='metric'><div class='label'>n_trials</div><div class='value'>{data.get('n_trials', 0)}</div></div>"
+        f"<div class='metric'><div class='label'>Generated at</div><div class='value' style='font-size:0.95em'>{data.get('generated_at', '?')}</div></div>"
+        f"</div>"
+    )
+    body = (
+        "<h1>Synthetic-known-answer benchmark</h1>"
+        "<p class='caption'>The apparatus is given a synthetic regime-switching market with "
+        "deliberately planted causal structure plus distractor null cells. Each row is one "
+        "ablation (single vs debate vs lab; memory off vs on); the metrics are recall (planted "
+        "truths recovered), false-discovery rate (distractors promoted), and net signal-to-noise.</p>"
+        + head
+        + f"<div class='card'>{_df_to_html_table(pd.DataFrame(rows), max_rows=24)}</div>"
+    )
+    return body, 0
+
+
+def _page_ablation(reports_dir: Path) -> tuple[str, int]:
+    """Phase 16: smallest-capability-preserving ablation -- drop each layer, measure delta."""
+    p = reports_dir / "agent" / "capability_ablation.json"
+    if not p.exists():
+        return _empty_section(
+            "No capability-ablation results. Run "
+            "<code>autosignalx eval ablate-capability</code>."
+        ), 0
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return _empty_section("Could not parse capability_ablation.json."), 0
+    rows = data.get("rows") or []
+    body = (
+        "<h1>Capability-preserving ablation</h1>"
+        "<p class='caption'>For each layer (L1 forecasting / L2 regime / L3 signal / "
+        "L4 graph / L5 agent), drop that layer's contribution to the survival pipeline "
+        "and re-grade. Marginal-skill column is the lift the layer provides; cells with "
+        "high cost / low marginal-skill are compression candidates.</p>"
+        f"<div class='card'>{_df_to_html_table(pd.DataFrame(rows), max_rows=12)}</div>"
+    )
+    return body, 0
+
+
+def _page_reproducibility(reports_dir: Path) -> tuple[str, int]:
+    """Phase 16: reproducibility badge."""
+    p = reports_dir / "reproducibility_badge.json"
+    if not p.exists():
+        return _empty_section(
+            "No badge committed. Run <code>autosignalx snapshot build</code> "
+            "or open the cockpit's Reproducibility panel."
+        ), 0
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return _empty_section("Could not parse reproducibility_badge.json."), 0
+    git = data.get("git", {}) or {}
+    env = data.get("env", {}) or {}
+    libs = env.get("libraries", {}) or {}
+    head = (
+        f"<div class='card'>"
+        f"<div class='metric'><div class='label'>Bundle hash</div><div class='value' style='font-family:monospace'>{data.get('artifacts_bundle_hash', '?')}</div></div>"
+        f"<div class='metric'><div class='label'>Artifacts</div><div class='value'>{data.get('n_artifacts', 0)}</div></div>"
+        f"<div class='metric'><div class='label'>Replay mode</div><div class='value'>{data.get('replay_mode', False)}</div></div>"
+        f"<div class='metric'><div class='label'>Generated</div><div class='value' style='font-size:0.95em'>{data.get('generated_at', '?')}</div></div>"
+        f"</div>"
+    )
+    git_html = (
+        f"<div class='card'><h2 style='margin-top:0'>Git</h2>"
+        f"<p>Commit <code>{git.get('commit', '?')}</code> on <code>{git.get('branch', '?')}</code> · dirty={git.get('dirty', '?')}</p></div>"
+    )
+    libs_html = (
+        "<div class='card'><h2 style='margin-top:0'>Library versions</h2>"
+        + _df_to_html_table(pd.DataFrame(
+            [{"library": k, "version": v} for k, v in sorted(libs.items())]
+        ), max_rows=20)
+        + "</div>"
+    )
+    body = (
+        "<h1>Reproducibility badge</h1>"
+        "<p class='caption'>Cryptographic fingerprint of the cockpit state: git + env + "
+        "per-artifact SHA-256 + a single bundle hash. Two badges with the same bundle hash "
+        "produce the same panels.</p>"
+        + head + git_html + libs_html
+    )
+    return body, 0
+
+
 # ---------- orchestration ---------- #
 
 
@@ -642,9 +1009,19 @@ def build_snapshot(
         ("signal_stability", _page_signal_stability),
         ("findings", _page_findings),
         ("survival", _page_survival),
+        ("bayesian", _page_bayesian),
+        ("calibration", _page_calibration),
+        ("red_team", _page_red_team),
+        ("coherence", _page_coherence),
+        ("coverage", _page_coverage),
+        ("preregistration", _page_preregistration),
+        ("holdout", _page_holdout),
+        ("synthetic", _page_synthetic),
+        ("ablation", _page_ablation),
         ("backtest", _page_backtest),
         ("agent", _page_agent),
         ("chat", _page_chat),
+        ("reproducibility", _page_reproducibility),
     ]
     pages_written = []
     total_figs = 0
