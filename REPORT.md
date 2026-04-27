@@ -1,5 +1,27 @@
 # AutoSignal-X — Research Report
 
+## Executive summary (state at branch `claude/mystifying-wing-8bd66f`)
+
+* **What it is.** A 5-layer modular AI research system (Forecasting / Representation / Reasoning / Relational / Agentic) that discovers conditional predictive structure in liquid daily ETF prices and grades every claim through a defendable methodology stack. The contribution is the apparatus, not any single discovery.
+* **Methodology stack (every promoted finding goes through every gate).**
+  1. Diebold-Mariano (Newey-West HAC) + block-bootstrap CI on per-row losses (initial promotion gate).
+  2. Benjamini-Hochberg FDR across the family of promoted findings (Phase 5).
+  3. Adversarial replication: full-test, placebo regime-shuffle, 50/50 block-holdout (Phase 5).
+  4. Combinatorial Purged Cross-Validation with embargo (Phase 8, Lopez de Prado).
+  5. Probability of Backtest Overfitting across the search space (Phase 8, Bailey/Borwein/Lopez de Prado/Zhu).
+  6. Deflated Sharpe Ratio adjusting for `n_trials` (Phase 8).
+  7. Romano-Wolf joint stepdown FWER under arbitrary dependence (Phase 8).
+  8. Hierarchical Normal-Normal Bayesian shrinkage + Bayes factor BF_10 + posterior-predictive check (Phase 12).
+  9. RedTeam attacks: asset-shuffle and time-shift (Phase 15).
+  10. Strict bar `survives_all_strict` = the conjunction of every gate above.
+* **Discovery agent.** LangGraph state machine in three modes: `single` (one LLM does propose / critique / decide), `debate` (Theorist / Skeptic / Adjudicator with three different DeepInfra models), `lab` (Phase 14: Theorist → Verifier → PrincipalInvestigator → Specialist consult → Skeptic → experiment → Adjudicator → KG-writer with 11 specialist roles). Auto-registers every hypothesis in the pre-registration ledger before the experiment runs.
+* **Forecast targets.** `target_type ∈ {price, log_return, excess_return, vol, rank}` — the contract is backward-compatible (legacy parquets are read as `price`). Dedicated returns-baselines (`zero_return`, `mean_return`, `momentum`) and returns-metrics (`forecast_sharpe`, `hit_rate`, `ic_pearson`, `ic_spearman`).
+* **Backtest.** Custom vectorised engine; six strategies; paired moving-block bootstrap on Sharpe-difference vs benchmark; strict no-look-ahead.
+* **Custom studies.** User-defined universe / dates / splits via `data/studies/<name>/study.yaml`; full forecast → backtest pipeline plus a cockpit form.
+* **Cockpit.** 31 panels, every one a read-only viewer over a typed parquet/JSONL artifact under `reports/`. Includes coverage map, statistical-power dashboard, counterfactual cards, Bayesian evidence, specialist council, pre-registration ledger, holdout vault, agent calibration, RedTeam attacks, agent coherence, reproducibility badge.
+* **Reproducibility.** Replay mode (no DeepInfra key required) reproduces every cockpit panel from the bundled `replay/agent_steps.jsonl`. Reproducibility badge bundles git hash + env + per-artifact SHA-256 + a single bundle hash.
+* **Tests.** 337 passing.
+
 ## Research questions
 
 1. **Forecasting baseline.** What is the floor for daily ETF price-level forecast accuracy on a walk-forward evaluation with strict temporal ordering and 21-trading-day horizon?
@@ -7,6 +29,11 @@
 3. **Multivariate covariates.** Does adding macro covariates (10Y yield, VIX, dollar index, crude) to Chronos-2's `past_covariates` improve forecasts unconditionally?
 4. **Conditional structure.** Are there specific (regime, asset, method) combinations where the layered system outperforms naive with statistical significance under both Diebold–Mariano (p < 0.05) and a positive bootstrap CI on the loss difference?
 5. **Agent autonomy.** Can a multi-agent research loop, reading from typed artifacts produced by the model layers, autonomously discover such conditional improvements and persist them with full provenance?
+6. **(Phase 7) Returns vs price.** When the forecast target moves from `adj_close` to log-returns / excess-returns / cross-sectional ranks, do the same conditional structures still hold? Does the lift survive after subtracting the trivial random-walk component?
+7. **(Phase 8) Selection bias.** When the agent has explored N hypotheses, what is the probability that the *best* one would beat zero under the null? Does the IS-best ranking transfer to OOS (PBO)? Do the gates still hold under Romano-Wolf joint testing and Combinatorial Purged Cross-Validation?
+8. **(Phase 12) Bayesian evidence weight.** What is the posterior probability `P(θ_i > 0 | data)` for each finding, and what is the Bayes factor against the null (BF_10)? Does the hierarchical shrinkage estimate corroborate the frequentist verdict?
+9. **(Phase 14) Specialist orchestration.** Can a planner LLM productively route hypotheses to specialist sub-agents (Statistician, Quant, RiskOfficer, Economist, Implementer, RedTeam, Historian) so that long-horizon research arcs build cumulatively in a persistent knowledge graph?
+10. **(Phase 15) Agent calibration.** Is the Theorist's predicted confidence well-calibrated against the survival rate of its findings (Brier score, Expected Calibration Error)? Is the agent's research arc coherent across sessions (lessons uptake, theme persistence)?
 
 ## System overview
 
@@ -484,10 +511,179 @@ Phase 6 closes two prior limitations (cross-asset graph now per-regime; signal r
 - **Single asset class.** Liquid daily ETFs only. The Phase 2 custom-study layer enables other universes; honest defence requires running an end-to-end study on at least one alternative class.
 - **No live deployment evaluation.** Latency, slippage, no-trade horizons, and execution simulation are absent.
 
+# Phase 7 -- Returns-target forecast contract
+
+The original forecast contract is price-level (`adj_close`). MAE on price levels is dominated by persistence -- a finding that beats naive there is partly measuring the trivial random-walk component, which is exactly the failure mode the Phase-5 block-holdout test of `f_9395cd1bd1be` exposed. Phase 7 lifts that limitation by extending the forecast contract with a `target_type` column.
+
+### Target types
+
+`eval.contracts.get_target_type` reads an optional `target_type` column on every forecast frame (defaulting to `price` for backward compatibility). Five types are now legal:
+
+| Target | Units | When to use |
+|---|---|---|
+| `price` | `adj_close` | Legacy default; trivially dominated by persistence |
+| `log_return` | `log(target / origin_value)` | Stationary, zero-mean; the right substrate for most quant claims |
+| `excess_return` | `log_return - rf_daily * horizon` | Subtracts ^TNX-implied risk-free rate; isolates risky-asset alpha |
+| `vol` | rolling realised log-return volatility | For volatility-prediction hypotheses |
+| `rank` | cross-sectional fractional rank | For relative-performance hypotheses (the dominant institutional alpha lens) |
+
+Adapters live in `eval/targets.py`; conversion is explicit (`convert_target(forecasts, target_type)`) so the audit trail is preserved.
+
+### Returns-baselines
+
+`forecast/returns_baselines.py` adds three returns-native baselines (`zero_return`, `mean_return(lookback=60)`, `momentum(lookback=60, scale=0.5)`). The CLI command `autosignalx eval returns --target log_return` runs them and persists `target_type=log_return` forecasts.
+
+### Returns metrics
+
+`eval/metrics_returns.py` adds the metrics that matter for returns:
+
+* `forecast_sharpe` -- annualised Sharpe of a sign-following strategy
+* `hit_rate` -- fraction of rows where `sign(prediction) == sign(target)`
+* `ic_pearson` / `ic_spearman` -- linear and rank information coefficients
+
+These are reported per-method by `eval/metrics_returns.summarise_returns`. Existing price-level pipelines are unchanged.
+
+# Phase 8 -- Selection-bias-aware evaluation
+
+Phase 5 attacks every promoted finding individually. Phase 8 adds the **family-wide** statistical machinery a research lab uses to defend against selection bias when many hypotheses were tried.
+
+### Combinatorial Purged Cross-Validation (CPCV)
+
+`eval/cpcv.py` implements Lopez de Prado's CPCV. With N folds and k=2 test folds per path, it constructs C(N,2) = N(N-1)/2 paths, each with an embargo buffer between train and test to prevent overlap leakage from h-step-ahead forecasts. `cpcv_skill_distribution` returns the mean/std/min/max of skill-vs-baseline across all paths -- a true distribution rather than a single walk-forward number. Hardening output now includes a `cpcv` field per finding.
+
+### Probability of Backtest Overfitting (PBO)
+
+`eval/pbo.py` implements Bailey, Borwein, Lopez de Prado, Zhu (2014). Across all 2^S combinatorially symmetric IS/OOS splits of the per-period skill matrix, PBO measures how often the IS-best strategy ranks below the OOS median. PBO ≈ 0 = robust ranking; PBO ≈ 0.5 = pure search noise. Surfaced as `autosignalx eval pbo` and persisted to `reports/agent/pbo.json`.
+
+### Deflated Sharpe Ratio
+
+`eval/deflated_sharpe.py` implements Bailey & Lopez de Prado's DSR. Given the observed Sharpe of a strategy, DSR computes the probability the strategy would have produced that Sharpe under the null of zero true alpha *given that N candidate strategies were tested*. The expected max Sharpe under null is computed from the closed-form extreme-value approximation. DSR > 0.95 is the rigorous bar.
+
+### Romano-Wolf step-down
+
+`eval/romano_wolf.py` implements the more powerful FWER control under correlation: studentize per-hypothesis loss-difference series, bootstrap the joint max-|t| distribution under the null, and step-down adjust each hypothesis's p-value. Joint adjusted p-values now appear as `rw_q` in the survival ledger.
+
+### Pre-registration ledger
+
+`eval/preregistration.py` lets the agent (or a human) hash-commit a hypothesis -- with explicit decision rule, predicted effect size, and falsifiability statement -- *before* running the experiment. The hash uniquely identifies the registration; resolutions are appended separately so registration history is never rewritten. The lab-mode agent (Phase 14) auto-registers every hypothesis at the verifier step. The cockpit's **Pre-Registration** panel shows registered / open / resolved counts.
+
+### Holdout vault
+
+`eval/holdout_vault.py` declares a never-touched final test slice. `assert_no_vault_leakage(forecasts)` raises if any forecast row's `forecast_origin` falls inside the locked range; `open_vault(...)` is the one-time evaluation method that records the final headline metric to `reports/agent/holdout_vault/results.json`. CLI: `autosignalx eval vault-init <start> <end>` and `autosignalx eval vault-open`.
+
+### Strict survival bar
+
+`eval/survival.py:harden_findings` now produces a `survives_all_strict` flag = (Phase-5 attacks) ∧ (Romano-Wolf survives) ∧ (DSR ≥ 0.95) ∧ (CPCV mean skill > 0). This is the lab-grade promotion gate -- a finding that passes here is defensible against the full search space.
+
+# Phase 12 -- Hierarchical Bayesian evidence
+
+Frequentist DM/FDR/RW gates report rejection of the null. Decision-makers want to know "given the data, what's the probability the lift is real?". `eval/bayesian.py` implements a Normal-Normal hierarchical model with empirical-Bayes hyperparameters (no NumPyro/PyMC dependency required):
+
+```
+d_i | theta_i ~ Normal(theta_i, sigma_i^2 / n_i)
+theta_i ~ Normal(mu, tau^2)            # population
+mu, tau^2 estimated by method of moments
+```
+
+Per-finding outputs: posterior mean, posterior sd, P(theta_i > 0), Bayes factor BF_10 vs the null. The strict Bayesian bar is BF ≥ 10 and P(theta>0) ≥ 0.95. Results plumb through `survival.jsonl` as the `bayesian` field and surface in the **Bayesian Evidence** cockpit panel; `posterior_predictive_check` also simulates next-session loss differences for graphical PPC.
+
+# Phase 14 -- Specialist agent lab
+
+Phase 5's debate had three roles (Theorist / Skeptic / Adjudicator). Phase 14 builds a specialist research lab on top:
+
+| Role | Function |
+|---|---|
+| PrincipalInvestigator | Plans the round; picks the next specialist |
+| Theorist | Mechanism-grounded hypothesis (existing) |
+| Skeptic | Adversarial reviewer (existing) |
+| Adjudicator | Decisive verdict (existing) |
+| Statistician | Phase-8 selection-bias accounting + Phase-12 Bayes |
+| Quant | Factor residualization + capacity |
+| RiskOfficer | Drawdown / tail / regime concentration |
+| Economist | Mechanistic plausibility + narrative consistency |
+| Implementer | Execution / slippage / turnover |
+| RedTeam | Adversarial perturbations beyond the existing harness |
+| Historian | Queries the persistent KG |
+
+`agent/specialists.py` declares prompts; `agent/lab.py` wires them into a LangGraph state machine: `Theorist -> Verifier -> Planner -> Specialist -> Skeptic -> experiment -> Adjudicator -> KG-writer -> [Theorist | END]`. Each consultation is a single LLM call recorded in the ledger as `step="specialist:<role>"`, visible in the **Specialist Council** cockpit panel.
+
+### Persistent knowledge graph
+
+`agent/knowledge_graph.py` adds a structured KG persisted as `reports/agent/kg/{nodes,edges}.jsonl`. Nodes: `finding | hypothesis | method | regime | asset | mechanism | session | ticket`. Edges: `refines | refutes | generalizes | complements | attacks | cites | implements | promoted_by | discovered_in | applies_to`. The `kg_writer` node ingests promoted findings into the graph idempotently after every round; the Historian role queries it for prior work.
+
+### Bayesian experimental design (EIG)
+
+`agent/eig.py` provides an Expected Information Gain proxy that ranks candidate (method × asset × regime) experiments. The score combines novelty (slice not yet tested or promoted) with a power proxy (sqrt(n_samples)) and penalises already-tested cells. The cockpit's **Coverage Map** panel renders this as a 4D heatmap so reviewers see exactly where the agent has hunted.
+
+### Pre-registration verifier
+
+`agent/verifier.py` checks every hypothesis carries a real pre-registration block (decision_rule, falsifier, ideally predicted_effect) before the experiment runs. Missing fields are flagged in the ledger; the verifier ledger entry feeds into Phase-15 calibration when the predicted effect is available.
+
+CLI: `autosignalx agent run --mode lab` runs the full lab-mode loop; `--specialists statistician,quant,economist` overrides the specialist pool.
+
+# Phase 15 -- Agent self-improvement and evals
+
+### Calibration
+
+`agent/calibration.py` scores agent confidence vs survival outcomes. Brier score and Expected Calibration Error (ECE) summarise how well the Theorist's prior predictions matched the eventual hardening verdicts. The **Agent Calibration** panel renders the reliability diagram.
+
+### Red team attacks
+
+`agent/red_team.py` adds two attacks beyond Phase-5:
+
+* **Asset-shuffle**: re-run the gate on every other asset in the same regime. A finding survives iff no other asset is also promotable -- the asset specificity is genuine, not a regime-wide effect.
+* **Time-shift**: shift `forecast_origin` by 5 trading days and re-evaluate. Catches single-date coincidences.
+
+The **RedTeam Attacks** panel renders per-finding outcomes from `reports/agent/red_team.jsonl`.
+
+### Long-horizon coherence
+
+`agent/coherence.py` scores per-session coherence with three proxies that don't require an LLM call:
+
+* `lessons_uptake` -- substring match between current proposals and prior `lessons.md`
+* `lineage_branching_factor` -- mean out-degree of lineage DAG nodes
+* `theme_persistence_entropy` -- Shannon entropy of (asset, regime) cells visited
+
+These combine into a single composite score persisted to `reports/agent/coherence.jsonl`. The **Agent Coherence** panel renders the trend across sessions.
+
+### Prompt versioning
+
+`agent/prompt_optimizer.py` treats role prompts as versioned artifacts. `register_prompt(role, text)` is idempotent on hash; `score_versions(role, trace_quality)` aggregates the per-round scoring rubrics across versions; `best_version(role)` returns the highest-scoring version by geometric-mean of rubric averages. Prompt history lives at `reports/agent/prompts/<role>.jsonl`.
+
+### Eval suite orchestration
+
+`agent/eval_suite.py` and `autosignalx agent eval-suite` run all four (calibration, RedTeam, coherence per session, prompt-version scoring) end-to-end and write a summary JSON. Intended to run after every session's `harden` step.
+
+# Phase 16 -- Cockpit observability and explainability
+
+Eleven new panels that turn the cockpit from "viewer" into "research-lab dashboard":
+
+| Panel | Purpose |
+|---|---|
+| **Coverage Map** | 4D heatmap of (method × asset × regime) coloured by EIG; reviewer sees exactly where the agent has hunted and where blank space remains. |
+| **Statistical Power** | Per-cell Cohen's d, observed power at α=0.05, sample-size required for 80% power. Distinguishes under-powered failures from genuine nulls. |
+| **Counterfactual Cards** | Per-finding factor residualization, what-if perturbation buckets, outlier-removal stability. Makes the *reasoning* behind a finding interrogable. |
+| **Bayesian Evidence** | Posterior mean / sd / P(θ>0) / BF_10 from the Phase-12 hierarchical model. |
+| **Specialist Council** | Multi-role consultation feed (Statistician/Quant/Risk/Economist/Implementer/RedTeam/Historian) and KG explorer. |
+| **Pre-Registration** | Hash-committed hypotheses, open vs resolved registrations, resolution outcomes. |
+| **Holdout Vault** | Vault status (locked/opened) and one-time-eval results. |
+| **Agent Calibration** | Reliability diagram + Brier + ECE for the Theorist's predicted confidence. |
+| **RedTeam Attacks** | Per-finding asset-shuffle + time-shift verdicts. |
+| **Agent Coherence** | Per-session lessons-uptake, lineage branching factor, theme entropy, composite score. |
+| **Reproducibility** | Git hash, env, library versions, replay flag, per-artifact SHA-256 hashes, single bundle hash. |
+
+Per-finding cards now expose **factor residualization** (regress per-bar loss-diff on macro factors; report residual mean and t-statistic), **what-if** (skill stratified by prediction-magnitude quartile), and **outlier removal** (drop top 1% absolute-diff rows; recompute skill). Implementation in `eval/counterfactual.py`. Statistical power dashboard in `eval/power.py`. Reproducibility module in `autosignalx/reproducibility.py` with a `write_badge()` API and a clickable "refresh badge" button in the cockpit.
+
 ## Future work
 
 Closed in Phase 5: ~~multiple-comparison correction~~ (BH-FDR), ~~adversarial replication~~ (full-test, placebo, block-holdout).
 Closed in Phase 6: ~~per-regime cross-asset graph~~, ~~walk-forward signal ranking~~ (now produces a stability summary).
+Closed in Phase 7: ~~returns-target forecasting~~ (target_type contract + returns baselines + returns metrics).
+Closed in Phase 8: ~~selection-bias-aware evaluation~~ (CPCV + PBO + Deflated Sharpe + Romano-Wolf + pre-registration + holdout vault).
+Closed in Phase 12: ~~hierarchical Bayesian evidence~~ (Normal-Normal model, Bayes factors, PPC).
+Closed in Phase 14: ~~specialist agent lab~~ (10+ roles, persistent KG, EIG planner, pre-registration verifier).
+Closed in Phase 15: ~~self-improving prompts and agent evals~~ (calibration, RedTeam, coherence, prompt versioning, eval suite).
+Closed in Phase 16: ~~cockpit observability and explainability~~ (11 new panels: Coverage Map, Statistical Power, Counterfactual Cards, Bayesian Evidence, Specialist Council, Pre-Registration, Holdout Vault, Agent Calibration, RedTeam Attacks, Agent Coherence, Reproducibility).
 
 Open:
 
