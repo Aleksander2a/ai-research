@@ -4,19 +4,19 @@
 [![Static snapshot](https://img.shields.io/badge/snapshot-github_pages-222?logo=github&logoColor=white)](https://aleksander2a.github.io/ai-research/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
-**Reviewer in a hurry?** Read [TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md) first — it's a one-page brief with the 5-minute evaluation path.
+**Short on time?** Read [TECHNICAL_SUMMARY.md](TECHNICAL_SUMMARY.md) first — it's a one-page overview with a 5-minute walkthrough of the cockpit.
 
-AutoSignal-X is an **autonomous research apparatus** that detects when its own predictions are illusions. Five model layers + an agentic research loop discover conditional predictive structure in liquid daily ETF prices; a 9-stage statistical hardening pipeline (DM + bootstrap → BH-FDR → adversarial replication → CPCV → PBO → Deflated Sharpe → Romano-Wolf → hierarchical Bayesian → strict bar) grades every promoted finding before it ships. The contribution is the methodology and the agent that operates it — not any single trade.
+AutoSignal-X is an **AI research system for discovering predictive structure in liquid daily ETF prices**, paired with an autonomous research loop that grades its own discoveries through a multi-stage statistical methodology before any finding is published. Five model layers (forecasting · regime representation · per-regime reasoning · cross-asset relations · agentic discovery) feed a hardening pipeline that runs every promoted finding through Diebold-Mariano + block-bootstrap → BH-FDR → adversarial replication → CPCV → PBO → Deflated Sharpe → Romano-Wolf → hierarchical Bayesian shrinkage → a strict bar that is the conjunction of every gate. The contribution is the methodology and the agent that operates it; any single trade is incidental.
 
-The submission directly addresses three questions from the Deeter AI Researcher JD:
+Three capabilities differentiate the system:
 
-- **Q1 — long-horizon memory for dynamic reasoning.** Persistent multi-form memory cell across sessions: `lessons.md` for narrative recall, `reports/agent/kg/{nodes,edges}.jsonl` for a structured knowledge graph (findings / methods / regimes / assets / mechanisms with `refines`/`refutes`/`generalizes` edges), and a grounded RAG index over the entire run corpus.
-- **Q3 — memory cell with human chat interface.** The cockpit's *Ask the Memory* panel runs cite-or-refuse RAG against the same corpus; off-corpus questions trigger a canonical refusal, every claim carries a citation back to its artifact.
-- **Q4 — autonomy with observability and steerability.** Every agent step is ledgered with `(round, step, content, session_id)`; every hypothesis is hash-committed in a pre-registration ledger before its experiment runs; the Theorist's confidence is calibrated against finding-survival outcomes (Brier + ECE); the strict survival bar is the conjunction of every gate. Replay mode reproduces every panel without an API key.
+- **Long-horizon memory across sessions.** Three complementary memory cells are written and re-read at session boundaries: `reports/agent/lessons.md` (narrative summary), `reports/agent/kg/{nodes,edges}.jsonl` (structured knowledge graph of findings / methods / regimes / assets / mechanisms with `refines` / `refutes` / `generalizes` edges), and a grounded retrieval index over the entire run corpus. Each new session reads from all three before it proposes its first hypothesis.
+- **Memory cell with a human chat interface.** The cockpit's *Ask the Memory* panel runs cite-or-refuse retrieval-augmented chat against the same corpus; every claim carries a citation back to its source artifact, and off-corpus questions trigger a canonical refusal instead of a hallucination.
+- **Autonomy with observability and steerability.** Every agent step is ledgered with `(round, step, content, session_id)`; every hypothesis is hash-committed to a pre-registration ledger *before* its experiment runs; the Theorist's predicted confidence is calibrated against finding-survival outcomes (Brier + Expected Calibration Error); the strict survival bar is the conjunction of every gate. The full session is reproducible without an API key via the deterministic replay mode.
 
-It also contributes a **synthetic-known-answer benchmark** (`autosignalx eval synthetic`) where planted causal structure is injected into a synthetic universe so the apparatus' recall + false-discovery rate are themselves audited numbers, and a **capability-preserving ablation** (`autosignalx eval ablate-capability`) that reports which model layers carry marginal skill vs cost (Deeter Q2 — "where should compression happen?").
+The system also contributes a **synthetic-known-answer benchmark** (`autosignalx eval synthetic`) where deliberately planted causal structure is injected into a synthetic universe so the apparatus' recall and false-discovery rate are themselves audited numbers per gate, and a **capability-preserving ablation** (`autosignalx eval ablate-capability`) that reports which model layers carry marginal predictive skill versus how many bytes their precomputed forecasts cost — a concrete Pareto frontier for compression decisions.
 
-The headline scientific question the system itself answers: **for which (regime, asset, method) combinations does a layered forecasting stack produce a lift that survives every gate?** Bundled answer: 1 of 1 promoted, 0 of 1 survives the strict bar — the apparatus correctly graded its own discovery as fragile, which is the design goal.
+The headline scientific question the system itself answers: **for which (regime, asset, method) combinations does a layered forecasting stack produce a lift that survives every gate?** Bundled answer at this commit: 1 of 1 promoted, 0 of 1 survives the strict bar — the apparatus correctly graded its own discovery as fragile, which is the design goal.
 
 ## Inputs and outputs
 
@@ -76,7 +76,7 @@ Summary:
 
 Two zero-install ways to see AutoSignal-X without cloning:
 
-- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — curated 20-page HTML rendering of the most reviewer-relevant cockpit panels from the latest committed artifacts (a subset of the live cockpit's 31 panels). No runtime, no API key required; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
+- **[Static snapshot](https://aleksander2a.github.io/ai-research/)** — curated 20-page HTML rendering of the cockpit's headline panels from the latest committed artifacts (a subset of the live cockpit's 31 panels, covering every methodology-grade artifact and the agent activity feed). No runtime, no API key required; rebuilt automatically on every push to `main` via GitHub Actions. The "always-works" option.
 - **[Live cockpit](https://ai-research-aleksander2a.streamlit.app)** — full Streamlit app on Streamlit Community Cloud, defaulting to replay mode (no DeepInfra key required). Every panel is interactive against the bundled artifacts.
 
 Both deployments run from this same repo on the same branch.
@@ -129,7 +129,7 @@ The Streamlit cockpit has **31 panels** in the sidebar (in actual order):
 8. **Signal Stability** — Phase 6: walk-forward feature-importance rankings; per-(regime, feature) stability metrics; rank-trajectory chart across windows.
 9. **Backtest Arena** — Phase 1: simulated trading on the test window. Equity curves, drawdown areas, per-strategy metric table, paired block-bootstrap CI on Sharpe-difference, per-regime breakdown. Strict no-look-ahead.
 10. **Custom Study** — Phase 2: form-based per-study workspace (universe / dates / splits). Pre-flight validation + pipeline buttons.
-11. **Coverage Map** — Phase 14/16: hypothesis search-space heatmap of (method × asset × regime) coloured by EIG (expected information gain). Reviewer sees exactly where the agent has hunted.
+11. **Coverage Map** — Phase 14/16: hypothesis search-space heatmap of (method × asset × regime) coloured by EIG (expected information gain). Shows exactly where the agent has hunted, what's promoted, what's still open.
 12. **Statistical Power** — Phase 16: per-cell Cohen's d, power at α=0.05, sample-size required for 80% power. Distinguishes underpowered failures from genuine nulls.
 13. **Counterfactual Cards** — Phase 16: per-finding factor residualization (against 5-day-diff macro factors), what-if perturbations by prediction-magnitude quartile, outlier-removal stability.
 14. **Bayesian Evidence** — Phase 12: hierarchical Normal-Normal posterior; per-finding posterior mean / sd, P(θ>0), Bayes factor BF_10, posterior predictive intervals.
@@ -284,10 +284,10 @@ app/                     Streamlit cockpit (31 panels)
 configs/                 YAML experiment configs
 tests/                   337 pytest tests (74 net new across Phases 7/8/12/14/15/16)
 docs/ARCHITECTURE.md     Implementation reference
-docs/roadmap/            POST_SUBMISSION_ROADMAP.md (Phases 1-6 shipped; 7-8-12-14-15-16 added)
+docs/roadmap/            ROADMAP.md (Phase-by-phase plan and status; Phases 1-8, 12, 14-16 shipped)
 data/                    (gitignored cache; data/studies/<name>/ for per-study workspaces)
 reports/                 Persisted artifacts (every layer writes here; cockpit reads here)
-replay/                  Recorded LLM responses for no-key reviewer mode
+replay/                  Recorded LLM responses; lets the cockpit run end-to-end without an API key
 scripts/                 run_session.sh / .ps1 for cron / Task Scheduler
 REPORT.md                Research questions, methodology, results, limitations, future work
 ```

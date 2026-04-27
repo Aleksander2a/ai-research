@@ -1,12 +1,10 @@
-"""Smallest-capability-preserving ablation (Deeter Q2).
+"""Layer-by-layer marginal-contribution ablation.
 
-Deeter explicitly asks: *"What is the smallest capability-preserving
-system, and where should compression happen: architecture, distillation,
-retrieval, memory, or runtime?"*
-
-This module answers a concrete, repo-grounded version of that question:
-**which of the system's five layers carry the marginal skill, and
-which are compression candidates?**
+The system has five model layers (forecasting / regime / signal / graph
+/ agentic) and a hardening pipeline that consumes their outputs. A
+recurring question for any such pipeline is *which layers carry actual
+marginal skill, and which can be compressed or dropped without losing
+capability?* This module produces a concrete, repo-grounded answer.
 
 Approach: build progressively smaller variants of the system, all
 running through the same survival gates, and report each variant's

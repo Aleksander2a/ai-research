@@ -1,26 +1,27 @@
 # AutoSignal-X — Research Report
 
-## Executive summary (state on `main`, post-Phase-16)
+## Executive summary (state on `main`)
 
 * **What it is.** A 5-layer modular AI research system (Forecasting / Representation / Reasoning / Relational / Agentic) that discovers conditional predictive structure in liquid daily ETF prices and grades every claim through a defendable methodology stack. The contribution is the apparatus, not any single discovery.
-* **Methodology stack (every promoted finding goes through every gate).**
-  1. Diebold-Mariano (Newey-West HAC) + block-bootstrap CI on per-row losses (initial promotion gate).
-  2. Benjamini-Hochberg FDR across the family of promoted findings (Phase 5).
-  3. Adversarial replication: full-test, placebo regime-shuffle, 50/50 block-holdout (Phase 5).
-  4. Combinatorial Purged Cross-Validation with embargo (Phase 8, Lopez de Prado).
-  5. Probability of Backtest Overfitting across the search space (Phase 8, Bailey/Borwein/Lopez de Prado/Zhu).
-  6. Deflated Sharpe Ratio adjusting for `n_trials` (Phase 8).
-  7. Romano-Wolf joint stepdown FWER under arbitrary dependence (Phase 8).
-  8. Hierarchical Normal-Normal Bayesian shrinkage + Bayes factor BF_10 + posterior-predictive check (Phase 12).
-  9. RedTeam attacks: asset-shuffle and time-shift (Phase 15).
+* **Methodology stack (every promoted finding passes every gate).**
+  1. Diebold-Mariano (Newey-West HAC) + block-bootstrap CI on per-row losses — the initial promotion gate.
+  2. Benjamini-Hochberg FDR across the family of promoted findings.
+  3. Adversarial replication: full-test, placebo regime-shuffle, 50/50 block-holdout.
+  4. Combinatorial Purged Cross-Validation with embargo (Lopez de Prado).
+  5. Probability of Backtest Overfitting across the search space (Bailey, Borwein, Lopez de Prado, Zhu).
+  6. Deflated Sharpe Ratio adjusting for the number of strategies tried.
+  7. Romano-Wolf joint stepdown FWER under arbitrary dependence.
+  8. Hierarchical Normal-Normal Bayesian shrinkage + Bayes factor BF₁₀ ≥ 10 + posterior-predictive check.
+  9. RedTeam attacks: asset-shuffle and time-shift replications.
   10. Strict bar `survives_all_strict` = the conjunction of every gate above.
-* **Discovery agent.** LangGraph state machine in three modes: `single` (one LLM does propose / critique / decide), `debate` (Theorist / Skeptic / Adjudicator with three different DeepInfra models), `lab` (Phase 14: Theorist → Verifier → PrincipalInvestigator → Specialist consult → Skeptic → experiment → Adjudicator → KG-writer with 11 specialist roles). Auto-registers every hypothesis in the pre-registration ledger before the experiment runs.
+* **Discovery agent.** LangGraph state machine in three modes: `single` (one LLM does propose / critique / decide), `debate` (Theorist / Skeptic / Adjudicator with three different DeepInfra models), `lab` (Theorist → Verifier → PrincipalInvestigator → Specialist consult → Skeptic → experiment → Adjudicator → KG-writer with 11 specialist roles). Auto-registers every hypothesis in the pre-registration ledger before the experiment runs.
 * **Forecast targets.** `target_type ∈ {price, log_return, excess_return, vol, rank}` — the contract is backward-compatible (legacy parquets are read as `price`). Dedicated returns-baselines (`zero_return`, `mean_return`, `momentum`) and returns-metrics (`forecast_sharpe`, `hit_rate`, `ic_pearson`, `ic_spearman`).
 * **Backtest.** Custom vectorised engine; six strategies; paired moving-block bootstrap on Sharpe-difference vs benchmark; strict no-look-ahead.
 * **Custom studies.** User-defined universe / dates / splits via `data/studies/<name>/study.yaml`; full forecast → backtest pipeline plus a cockpit form.
 * **Cockpit.** 31 panels, every one a read-only viewer over a typed parquet/JSONL artifact under `reports/`. Includes coverage map, statistical-power dashboard, counterfactual cards, Bayesian evidence, specialist council, pre-registration ledger, holdout vault, agent calibration, RedTeam attacks, agent coherence, reproducibility badge.
-* **Reproducibility.** Replay mode (no DeepInfra key required) reproduces every cockpit panel from the bundled `replay/agent_steps.jsonl`. Reproducibility badge bundles git hash + env + per-artifact SHA-256 + a single bundle hash.
-* **Tests.** 337 passing.
+* **Audited apparatus capability.** A synthetic-known-answer benchmark plants causal structure into a synthetic universe and measures per-gate recall + false-discovery rate, so the apparatus' own discriminative power is a measured number rather than a marketing claim. A capability-preserving ablation drops each layer in turn and reports marginal predictive skill against a cost-proxy in bytes.
+* **Reproducibility.** Replay mode (no DeepInfra key required) reproduces every cockpit panel from the bundled `replay/agent_steps.jsonl`. The reproducibility badge bundles git hash + environment + per-artifact SHA-256 + a single bundle hash.
+* **Tests.** 342 passing.
 
 ## Research questions
 
@@ -29,11 +30,12 @@
 3. **Multivariate covariates.** Does adding macro covariates (10Y yield, VIX, dollar index, crude) to Chronos-2's `past_covariates` improve forecasts unconditionally?
 4. **Conditional structure.** Are there specific (regime, asset, method) combinations where the layered system outperforms naive with statistical significance under both Diebold–Mariano (p < 0.05) and a positive bootstrap CI on the loss difference?
 5. **Agent autonomy.** Can a multi-agent research loop, reading from typed artifacts produced by the model layers, autonomously discover such conditional improvements and persist them with full provenance?
-6. **(Phase 7) Returns vs price.** When the forecast target moves from `adj_close` to log-returns / excess-returns / cross-sectional ranks, do the same conditional structures still hold? Does the lift survive after subtracting the trivial random-walk component?
-7. **(Phase 8) Selection bias.** When the agent has explored N hypotheses, what is the probability that the *best* one would beat zero under the null? Does the IS-best ranking transfer to OOS (PBO)? Do the gates still hold under Romano-Wolf joint testing and Combinatorial Purged Cross-Validation?
-8. **(Phase 12) Bayesian evidence weight.** What is the posterior probability `P(θ_i > 0 | data)` for each finding, and what is the Bayes factor against the null (BF_10)? Does the hierarchical shrinkage estimate corroborate the frequentist verdict?
-9. **(Phase 14) Specialist orchestration.** Can a planner LLM productively route hypotheses to specialist sub-agents (Statistician, Quant, RiskOfficer, Economist, Implementer, RedTeam, Historian) so that long-horizon research arcs build cumulatively in a persistent knowledge graph?
-10. **(Phase 15) Agent calibration.** Is the Theorist's predicted confidence well-calibrated against the survival rate of its findings (Brier score, Expected Calibration Error)? Is the agent's research arc coherent across sessions (lessons uptake, theme persistence)?
+6. **Returns vs price targets (Phase 7).** When the forecast target moves from `adj_close` to log-returns / excess-returns / cross-sectional ranks, do the same conditional structures still hold? Does the lift survive after subtracting the trivial random-walk component that dominates price-level MAE?
+7. **Selection bias (Phase 8).** When the agent has explored N hypotheses, what is the probability that the *best* one would beat zero under the null? Does the in-sample-best ranking transfer to out-of-sample performance (Probability of Backtest Overfitting)? Do the gates still hold under Romano-Wolf joint testing and Combinatorial Purged Cross-Validation?
+8. **Bayesian evidence weight (Phase 12).** What is the posterior probability `P(θ_i > 0 | data)` for each finding, and what is the Bayes factor against the null (BF₁₀)? Does the hierarchical shrinkage estimate corroborate the frequentist verdict?
+9. **Specialist orchestration (Phase 14).** Can a planner LLM productively route hypotheses to specialist sub-agents (Statistician, Quant, RiskOfficer, Economist, Implementer, RedTeam, Historian) so that long-horizon research arcs build cumulatively in a persistent knowledge graph?
+10. **Agent calibration (Phase 15).** Is the Theorist's predicted confidence well-calibrated against the survival rate of its findings (Brier score, Expected Calibration Error)? Is the agent's research arc coherent across sessions (lessons uptake, theme persistence)?
+11. **Apparatus capability (synthetic benchmark + capability ablation).** When causal structure is deliberately planted in a synthetic universe, what fraction does the apparatus recover at each gate, and what is its false-discovery rate? Which model layers carry the marginal predictive skill that justifies their precomputed-forecast cost?
 
 ## System overview
 
@@ -248,7 +250,7 @@ The Adjudicator-role model re-read `f_9395cd1bd1be` against the rest of the ledg
 
 ## Backtested simulation
 
-Phase 1 (post-submission) translates the discovery layers into a concrete trading simulation to test whether the discovered structure is *economically actionable*, not only statistically significant.
+Phase 1 translates the discovery layers into a concrete trading simulation to test whether the discovered structure is *economically actionable*, not only statistically significant.
 
 ### Methodology
 
@@ -316,7 +318,7 @@ The backtest does not *invalidate* the research instrument; it validates the **d
 
 ## Custom studies
 
-Phase 2 (post-submission) lifts the hardcoded universe and date range so users can run AutoSignal-X on their own data. A `Study` is a named, isolated workspace declared by a small YAML at `data/studies/<name>/study.yaml`; the universe (assets + macro covariates), the date range, the walk-forward split boundaries, the forecast horizon and rolling step, and the cost assumption are all per-study.
+Phase 2 lifts the hardcoded universe and date range so users can run AutoSignal-X on their own data. A `Study` is a named, isolated workspace declared by a small YAML at `data/studies/<name>/study.yaml`; the universe (assets + macro covariates), the date range, the walk-forward split boundaries, the forecast horizon and rolling step, and the cost assumption are all per-study.
 
 ### What is parameterised
 
@@ -354,7 +356,7 @@ Default-flow artifacts under `data/cache/` and `reports/` are unchanged when `--
 
 The forecast (baseline + Chronos-2) and backtest layers are fully study-aware. The discovery layers (regime, signal, graph, agent) still write to project-default paths regardless of `--study`. Reason: those layers consume more user time and have subtler precondition requirements (sample sizes, regime-count selection, agent cost) that a future Phase 2 sub-iteration will address. The forecast → backtest pipeline is the path most users want for "see how the system behaves on my universe", so that path was prioritised.
 
-# Phase 3 — Conversational explainability (post-submission)
+# Phase 3 — Conversational explainability (post-Phase-6)
 
 Phase 3 replaces the original "Ask the Memory" panel with a **grounded RAG chat** over the run corpus. The corpus spans the agent ledger, promoted findings, lessons, trace-quality scores, self-critiques, telemetry summaries, and backtest run metrics. Every claim the assistant makes is followed by a `citation_id` (e.g. `finding:f_9395cd1bd1be`, `ledger:r3/skeptic`, `backtest:<run_id>/TopKLong`) copied verbatim from the retrieved evidence; questions whose answer is not in the corpus trigger a canonical refusal rather than a hallucination.
 
@@ -379,7 +381,7 @@ Phase 3 replaces the original "Ask the Memory" panel with a **grounded RAG chat*
 
 The corpus loader covers all seven on-disk artifact kinds but treats every JSONL row as a single chunk -- long ledger entries are truncated to 1200 chars rather than split semantically. Hashed-bag embeddings used in replay mode are intentionally lossy (per-question retrieval is noisy on subtle queries); they exist so the deterministic CI / no-key reviewer path works, not as a replacement for real embeddings. Expanding the eval set, semantic chunking inside long ledger entries, and bundling a canned live-mode chat trace into `replay/` are the obvious follow-ups.
 
-# Phase 4 — Demo and deployment (post-submission)
+# Phase 4 — Demo and deployment (post-Phase-6)
 
 Phase 4 closes the gap between the local repo and reviewers who do not want to run anything. Two parallel deployment paths ship from the same `main` branch.
 
@@ -395,7 +397,7 @@ A top-level `streamlit_app.py` shim sets `AUTOSIGNALX_REPLAY=true` when no `DEEP
 
 ### Honest scope of Phase 4
 
-The two deployments cover Phase 4A and 4B from the post-submission roadmap. Phase 4C ("reviewer-runnable custom-study runs in the deployed app") is intentionally not in scope -- a custom Phase 2 study can take minutes per asset on free-tier CPUs, which makes a poor demo. The deployed app exposes the Custom Study panel for read access (validate, list) but heavy steps (`data fetch`, `eval chronos`, `backtest run`) remain local-only via the CLI.
+The two deployments cover Phase 4A and 4B from the project roadmap. Phase 4C ("user-runnable custom-study runs in the deployed app") is intentionally not in scope -- a custom Phase 2 study can take minutes per asset on free-tier CPUs, which makes a poor demo. The deployed app exposes the Custom Study panel for read access (validate, list) but heavy steps (`data fetch`, `eval chronos`, `backtest run`) remain local-only via the CLI.
 
 # Phase 5 — Statistical hardening: surviving the methodology
 
@@ -408,7 +410,7 @@ The agent's auto-promotion gate evaluates each hypothesis individually at p < 0.
 3. **Placebo regime-shuffle**. The hypothesis claims a regime-conditioned effect. Shuffling regime labels uniformly while preserving the marginal distribution destroys the conditioning. If the gate still flags the finding promotable on shuffled labels, the "regime" was not the explanatory variable -- the lift was a marginal effect mistaken for conditional structure.
 4. **Block-holdout**. Split the slice 50/50 by `forecast_origin` time. The finding survives iff *both* halves independently pass the gate. Catches lifts driven by a single sub-period rather than a stable mechanism.
 
-The conjunction of all four (`survives_all`) is the strict bar. Any single failure is a research insight: it tells the reviewer precisely how the original gate over-promoted.
+The conjunction of all four (`survives_all`) is the strict bar. Any single failure is a research insight: it tells the reader precisely how the original gate over-promoted.
 
 ### Results on the existing finding
 
@@ -421,7 +423,7 @@ A single finding has been promoted in the bundled session: *"In regime 3, chrono
 | Placebo regime-shuffle | ✅ pass (shuffled p=0.30, no signal) | The regime conditioning was load-bearing; not a marginal effect. |
 | **Block-holdout (50/50 by `forecast_origin`)** | **❌ fail** | **First half (≤2023-06-22): p=0.025, promotable. Second half (>2023-06-22): p=0.82, no signal. Skill drops from ~10% to 0.5%.** |
 
-This is exactly the kind of insight the methodology was built to expose. The finding is not "wrong" -- it is **honestly fragile**. The lift is concentrated in the first half of the test window; the second half does not corroborate it. A reviewer should see this and conclude that the research apparatus correctly graded its own discovery, not that the apparatus failed.
+This is exactly the kind of insight the methodology was built to expose. The finding is not "wrong" -- it is **honestly fragile**. The lift is concentrated in the first half of the test window; the second half does not corroborate it. The reading is that the research apparatus correctly graded its own discovery, not that the apparatus failed.
 
 ### What this means for the project's research story
 
@@ -429,7 +431,7 @@ The user-facing claim is **not** "we found a robust signal." The user-facing cla
 
 > *We built an agentic research system that proposes hypotheses, runs experiments under walk-forward integrity, promotes findings under DM + bootstrap rigor, and then attacks every promoted finding under FDR, full-test, placebo, and block-holdout adversarial replication. The system flagged one candidate; the hardening exposed that the candidate's lift does not generalise across the full test window. The contribution is the apparatus and the discipline, not the candidate.*
 
-A reviewer evaluating this submission should see the methodology layer as the artifact: it is the part that generalises to other asset classes, other agents, other research questions. A future session that promotes a finding which *also* survives block-holdout is then defensible without caveat -- the gate has already proven it can fail honestly.
+The methodology layer is the artifact: it is the part that generalises to other asset classes, other agents, other research questions. A future session that promotes a finding which *also* survives block-holdout is then defensible without caveat — the gate has already proven it can fail honestly.
 
 ### Surfaces
 
@@ -446,7 +448,7 @@ Phase 5 ships only the **statistical hardening** layer (5.2 from the original Ph
 
 These are tracked under "Future work" below.
 
-# Phase 6 — Structural enrichments (post-submission)
+# Phase 6 — Structural enrichments (post-Phase-6)
 
 Phase 6 closes two of the structural gaps explicitly listed under Phase-5 limitations: the cross-asset graph being global rather than per-regime, and the per-regime signal ranking being a single fit rather than a walk-forward stability check. Both ship as **complementary** layers (the original artifacts are preserved); the new artifacts give reviewers an honest second look at the structure the agent had access to.
 
@@ -654,10 +656,13 @@ These combine into a single composite score persisted to `reports/agent/coherenc
 
 `agent/eval_suite.py` and `autosignalx agent eval-suite` run all four (calibration, RedTeam, coherence per session, prompt-version scoring) end-to-end and write a summary JSON. Intended to run after every session's `harden` step.
 
-# Reviewer-grade additions (synthetic benchmark + capability ablation)
+# Apparatus-capability evaluation (synthetic benchmark + capability ablation)
 
-These two artifacts post-date Phase 16 and exist to answer two specific
-reviewer questions that REPORT.md's prior text only addressed implicitly.
+These two artifacts post-date Phase 16 and exist to answer two questions
+the rest of the report only addressed implicitly: *(a) does the apparatus
+actually find planted structure when it exists, at what false-discovery
+rate?* and *(b) which model layers carry the marginal skill that
+justifies their precomputed-forecast cost?*
 
 ### Synthetic-known-answer benchmark
 
@@ -689,7 +694,7 @@ safety, not a bug. The benchmark is committed to
 `reports/agent/synthetic_benchmark.json` and rendered in the cockpit's
 **Synthetic Benchmark** panel + the static snapshot.
 
-### Smallest-capability-preserving ablation (Deeter Q2)
+### Capability-preserving ablation (layer-by-layer marginal contribution)
 
 Implementation in `eval/capability_ablation.py`; CLI `autosignalx eval
 ablate-capability`. The ablation does not retrain models; it concatenates
@@ -713,12 +718,13 @@ On the bundled artifacts:
 
 Reading: **naive is the unconditional MAE floor**; ARIMA adds nothing
 on price-level forecasting; Chronos-2 actively *worsens* MAE on this
-benchmark. The single promoted finding (`f_9395cd1bd1be` -- TLT, regime 3)
-only emerges with the multivariate variant **and** the regime layer
-because the gate is conditional on regime; without L2 the apparatus
-can't promote anything. So the cockpit's compression frontier is
-unambiguous: drop ARIMA / Chronos-2 univariate, keep
-`chronos2_multivariate` + L2-L4-L5 stack.
+benchmark. The single promoted finding (`f_9395cd1bd1be` — TLT,
+regime 3) only emerges once the multivariate forecast layer **and**
+the regime layer are both in scope, because the promotion gate is
+conditional on regime; without L2 the apparatus can't promote
+anything. The implied capability-vs-cost frontier on this dataset is
+unambiguous: ARIMA / Chronos-2 univariate add cost without skill,
+while `chronos2_multivariate` + L2-L4-L5 are load-bearing.
 
 The result is committed to `reports/agent/capability_ablation.json`
 and rendered in the cockpit's **Capability Ablation** panel.
