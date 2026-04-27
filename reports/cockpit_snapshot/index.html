@@ -37,31 +37,51 @@ code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 0.9
 <span style='color:#999;font-size:0.85em;margin-left:auto;align-self:center;padding:0 16px'>52 corpus chunks indexed</span>
 <div class="container">
 
-<h1>AutoSignal-X — research cockpit snapshot</h1>
-<p class='caption'>Static, navigable view of every cockpit panel rendered from on-disk artifacts.
-For the interactive version, run <code>make demo</code>.</p>
+<h1>AutoSignal-X — system overview</h1>
+<p class='caption'>AI research system for discovering predictive structure in liquid daily ETF prices,
+with an autonomous research loop that grades its own discoveries through a multi-stage statistical
+methodology before any finding ships. Static, navigable view of the cockpit rendered from on-disk
+artifacts; for the interactive version, run <code>make demo</code>.</p>
 
 <div class='card'><div class='metric'><div class='label'>Promoted findings</div><div class='value'>1</div></div><div class='metric'><div class='label'>Ledger entries</div><div class='value'>16</div></div><div class='metric'><div class='label'>LLM calls</div><div class='value'>16</div></div><div class='metric'><div class='label'>Total spend</div><div class='value'>$0.0562</div></div></div>
 
-<h2>Architecture</h2>
-<table><tr><th>Layer</th><th>Implementation</th></tr><tr><td><strong>L1 Forecasting</strong></td><td>Chronos-2 multivariate + ARIMA / naive baselines</td></tr><tr><td><strong>L2 Representation</strong></td><td>Contrastive 1D-CNN encoder + KMeans + HMM</td></tr><tr><td><strong>L3 Reasoning</strong></td><td>Per-regime HistGradientBoosting + permutation importance</td></tr><tr><td><strong>L4 Relational</strong></td><td>GLASSO + Granger + centrality</td></tr><tr><td><strong>L5 Agentic</strong></td><td>LangGraph debate (Theorist / Skeptic / Adjudicator) + DSL + sandboxed codegen</td></tr></table>
+<h2>What the system does</h2>
+<p>Five model layers feed a hardening pipeline that runs every promoted finding through
+Diebold-Mariano + block-bootstrap → BH-FDR → adversarial replication (full-test, placebo
+regime-shuffle, 50/50 block-holdout) → Combinatorial Purged Cross-Validation → Probability of
+Backtest Overfitting → Deflated Sharpe Ratio → Romano-Wolf joint stepdown → hierarchical
+Normal-Normal Bayesian shrinkage with a Bayes-factor floor. The strict bar
+<code>survives_all_strict</code> is the conjunction of every gate. The contribution is the
+methodology and the agent that operates it; any single trade is incidental.</p>
+
+<table><tr><th>Layer</th><th>What it does</th></tr><tr><td><strong>L1 — Forecasting</strong></td><td>Probabilistic point + interval forecasts. Frozen Chronos-2 (multivariate, with macro covariates) + classical baselines (naive, seasonal-naive, ARIMA(1,1,1) on log-prices). Returns / excess-return / vol / cross-sectional-rank target types are supported via the Phase-7 contract extension.</td></tr><tr><td><strong>L2 — Representation</strong></td><td>Latent regime labels. Contrastive 1D-CNN encoder (16-dim embeddings, 60-day windows, triplet loss) + KMeans on the embeddings; Gaussian HMM on raw features as a parallel detector.</td></tr><tr><td><strong>L3 — Reasoning</strong></td><td>Per-regime feature importance. HistGradientBoostingClassifier per regime + custom permutation importance + walk-forward stability (mean rank, rank std, top-K share).</td></tr><tr><td><strong>L4 — Relational</strong></td><td>Cross-asset structure. GLASSO partial correlations + Granger causality + NetworkX centrality; per-regime variant rebuilds the graph inside each regime.</td></tr><tr><td><strong>L5 — Agentic</strong></td><td>Hypothesis generation, experimentation, statistical promotion. LangGraph state machine in three modes: <code>single</code>, <code>debate</code> (Theorist / Skeptic / Adjudicator), <code>lab</code> (full specialist team with persistent KG memory and pre-registration verifier).</td></tr></table>
 
 <h2>What this snapshot contains</h2>
 <ul>
-<li><strong>Forecasts</strong> — per-method MAE / MAPE / dir-acc, per-(method, regime) stratification.</li>
-<li><strong>Regimes</strong> — KMeans + HMM regime timelines and embedding scatter.</li>
-<li><strong>Regime graph</strong> — per-regime GLASSO + Granger + centrality. Surfaces hubs/bridges that only matter in certain regimes.</li>
+<li><strong>Forecasts</strong> — per-method MAE / MAPE / directional accuracy, per-(method, regime) stratification, mean absolute error over time.</li>
+<li><strong>Regimes</strong> — KMeans + HMM regime timelines.</li>
+<li><strong>Regime graph</strong> — per-regime GLASSO + Granger + centrality; surfaces hubs and bridges that only matter in certain regimes plus the per-asset cross-regime sensitivity.</li>
 <li><strong>Signal stability</strong> — walk-forward feature-importance rankings; distinguishes stable signals from averaging artefacts.</li>
 <li><strong>Findings</strong> — promoted hypotheses with DM + bootstrap evidence.</li>
-<li><strong>Survival</strong> — every promoted finding under BH-FDR + adversarial replication (full-test, placebo, block-holdout).</li>
-<li><strong>Backtest</strong> — simulated trading metrics on the test window.</li>
-<li><strong>Agent</strong> — ledger timeline, trace-quality, self-critique, cost breakdown.</li>
-<li><strong>Chat corpus</strong> — citation index that powers Ask the Memory.</li>
+<li><strong>Survival</strong> — every promoted finding under BH-FDR + adversarial replication.</li>
+<li><strong>Bayesian</strong> — per-finding posterior mean / sd, P(θ&gt;0), Bayes factor BF₁₀ from the hierarchical Normal-Normal model.</li>
+<li><strong>Calibration</strong> — Brier score and Expected Calibration Error of the Theorist's predicted confidence vs finding-survival outcomes.</li>
+<li><strong>RedTeam</strong> — asset-shuffle and time-shift adversarial attacks beyond the original gates.</li>
+<li><strong>Coherence</strong> — per-session lessons-uptake, lineage branching factor, theme-persistence entropy.</li>
+<li><strong>Coverage</strong> — hypothesis search-space heatmap of (method × asset × regime) coloured by Expected Information Gain.</li>
+<li><strong>Pre-registration</strong> — hash-committed hypotheses + resolutions (open vs promoted vs refuted).</li>
+<li><strong>Holdout vault</strong> — never-touched final test slice (lock state + one-time evaluation results).</li>
+<li><strong>Synthetic benchmark</strong> — per-gate recall + FDR on a controlled synthetic universe with deliberately planted causal structure; the apparatus' own audited discriminative power.</li>
+<li><strong>Capability ablation</strong> — layer-by-layer marginal MAE-skill vs cost-proxy frontier.</li>
+<li><strong>Backtest</strong> — simulated trading on the test window with paired moving-block bootstrap.</li>
+<li><strong>Agent</strong> — ledger timeline, trace-quality scoring, cumulative LLM spend.</li>
+<li><strong>Chat corpus</strong> — citation index that powers <em>Ask the Memory</em>.</li>
+<li><strong>Reproducibility</strong> — git + environment + per-artifact SHA-256 + a single bundle hash for the snapshot state.</li>
 </ul>
 
-<h2>Live demo & code</h2>
-<p>Live cockpit (Streamlit Community Cloud): <a href="https://ai-research-aleksander2a.streamlit.app" target="_blank">ai-research-aleksander2a.streamlit.app</a>.</p>
-<p>Source: <a href="https://github.com/Aleksander2a/ai-research" target="_blank">github.com/Aleksander2a/ai-research</a>.</p>
+<h2>Live cockpit &amp; source</h2>
+<p>Live interactive cockpit on Streamlit Community Cloud: <a href="https://ai-research-aleksander2a.streamlit.app" target="_blank">ai-research-aleksander2a.streamlit.app</a>.</p>
+<p>Source repository: <a href="https://github.com/Aleksander2a/ai-research" target="_blank">github.com/Aleksander2a/ai-research</a>.</p>
 
 </div>
 <div class="footer">

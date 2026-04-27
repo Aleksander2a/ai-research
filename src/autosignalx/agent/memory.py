@@ -6,9 +6,13 @@ session by session under ``reports/agent/lessons.md``; the next
 session reads the most recent N lessons as additional context, so the
 agent's first round of session N is informed by sessions 1..N-1.
 
-This is the long-horizon memory cell that Deeter explicitly asks for:
-unbounded growing context, summarized periodically into a structured
-form the agent can re-consume."""
+This is the long-horizon memory cell of the system: an unbounded
+growing context, summarised periodically into a structured form the
+agent can re-consume on a later session.
+
+The cockpit's *Lessons & Memory* and *Specialist Council* panels both
+read from here; the persistent knowledge graph at
+``reports/agent/kg/`` is the queryable companion."""
 
 from __future__ import annotations
 

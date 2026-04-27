@@ -355,7 +355,7 @@ Pulls from yfinance, normalizes to long format, persists parquet, defines walk-f
 | `counterfactual.py` | Phase 16: per-finding interrogation lenses -- `factor_residualization`, `what_if_perturbation`, `outlier_removal`, `counterfactual_card` |
 | `power.py` | Phase 16: per-cell statistical power -- `cohen_d`, `power_at_alpha`, `min_n_for_power`, `power_grid` |
 | `synthetic_benchmark.py` | Synthetic-known-answer benchmark; `generate_universe(...)`, `grade_apparatus(...)`, `run_benchmark(n_trials, ...)`. Plants known-true (asset, regime, method) edges + distractor cells; runs every gate; reports recall/FDR per gate. |
-| `capability_ablation.py` | Smallest-capability-preserving ablation (Deeter Q2); `run_capability_ablation(reports_dir, ...)`. Drops each layer's contribution and reports marginal MAE-skill vs cost-proxy bytes per variant. |
+| `capability_ablation.py` | Layer-by-layer marginal-contribution ablation; `run_capability_ablation(reports_dir, ...)`. Constructs progressively richer pipeline variants (baseline_only → +arima → +chronos_univ → +multivariate → +regime → +graph → full_stack), reports per-variant Mean MAE, marginal MAE-drop vs the previous variant, and cost-proxy in bytes. |
 | `cli.py` | `autosignalx eval baseline` / `chronos` / `returns` / `pbo` / `vault-init` / `vault-open` / `synthetic` / `ablate-capability` / `status` (hardening is exposed under `autosignalx agent harden`) |
 
 ### `forecast/`

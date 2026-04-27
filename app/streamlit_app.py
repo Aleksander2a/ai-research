@@ -2531,19 +2531,19 @@ def render_reproducibility_panel() -> None:
 
 
 def render_headline() -> None:
-    """The reviewer's first-look panel.
+    """Default-landing panel: a self-contained system overview.
 
-    One screen, four metrics, the strict-bar verdict, and a 5-minute
-    reading path. Every other panel exists to show the math behind one of
-    the numbers on this page."""
+    Describes what AutoSignal-X is, why it exists, how the pieces fit
+    together, and what the bundled artifacts say about the apparatus'
+    behaviour. Every other panel in the cockpit shows the math behind a
+    number rendered here."""
     st.title("AutoSignal-X")
     st.caption(
-        "Autonomous research apparatus that grades its own discoveries through "
-        "a 9-stage methodology stack. Submission for the Deeter Analytics "
-        "AI Researcher role."
+        "AI research system for discovering predictive structure in liquid "
+        "daily ETF prices, with an autonomous research loop that grades its "
+        "own discoveries through a multi-stage statistical methodology."
     )
 
-    # Pull the headline numbers from disk. Each block degrades gracefully.
     rd = settings.reports_dir
     findings_path = rd / "agent" / "findings.jsonl"
     survival_path = rd / "agent" / "survival.jsonl"
@@ -2551,12 +2551,39 @@ def render_headline() -> None:
     cap_path = rd / "agent" / "capability_ablation.json"
     badge_path = rd / "reproducibility_badge.json"
 
+    # ---- Section 1: what the system is + why ---------------------------
+    st.markdown(
+        """
+        AutoSignal-X discovers conditional predictive structure in liquid
+        daily ETF prices and grades every claim through a defendable
+        statistical methodology before any finding ships. Five model layers
+        — **L1 forecasting** (Chronos-2 + classical baselines), **L2 latent
+        regimes** (contrastive 1D-CNN encoder + KMeans + parallel HMM),
+        **L3 per-regime feature ranking** (HistGradientBoosting + permutation
+        importance + walk-forward stability), **L4 cross-asset structure**
+        (GLASSO partial correlations + Granger causality + per-regime
+        graphs), **L5 agentic discovery** (LangGraph state machine in
+        `single` / `debate` / `lab` modes) — feed a hardening pipeline that
+        runs every promoted finding through Diebold-Mariano + block
+        bootstrap → BH-FDR → adversarial replication → Combinatorial
+        Purged CV → Probability of Backtest Overfitting → Deflated Sharpe →
+        Romano-Wolf joint stepdown → hierarchical Bayesian shrinkage →
+        a strict bar that is the conjunction of every gate.
+
+        The contribution is the **methodology and the agent that operates
+        it**, not any single trade. The same apparatus runs on the bundled
+        8-ETF universe (the default) or any user-defined universe via the
+        Phase-2 Custom Study workspace.
+        """
+    )
+
+    # ---- Section 2: bundled-result metric row ---------------------------
     n_findings = 0
     n_strict = 0
     if findings_path.exists():
         with findings_path.open("r", encoding="utf-8") as fh:
             n_findings = sum(1 for line in fh if line.strip())
-    survives_strict = []
+    survival_records: list[dict] = []
     if survival_path.exists():
         with survival_path.open("r", encoding="utf-8") as fh:
             for line in fh:
@@ -2569,7 +2596,7 @@ def render_headline() -> None:
                     continue
                 if rec.get("survives_all_strict"):
                     n_strict += 1
-                survives_strict.append(rec)
+                survival_records.append(rec)
 
     synth_summary: dict = {}
     if synth_path.exists():
@@ -2586,47 +2613,87 @@ def render_headline() -> None:
                 strict_recall = row.get("mean_recall")
                 strict_fdr = row.get("mean_fdr")
 
+    st.subheader("Bundled artifacts at a glance")
     cols = st.columns(4)
-    cols[0].metric("Promoted findings", n_findings)
-    cols[1].metric("Survive strict bar", f"{n_strict}/{n_findings}" if n_findings else "—")
+    cols[0].metric(
+        "Promoted findings",
+        n_findings,
+        help="Count of hypotheses that passed the initial DM + bootstrap promotion gate during the bundled session(s). Stored in reports/agent/findings.jsonl.",
+    )
+    cols[1].metric(
+        "Survive every gate (strict bar)",
+        f"{n_strict}/{n_findings}" if n_findings else "—",
+        help="Subset of promoted findings that survive FDR + adversarial replication + CPCV + Romano-Wolf + Deflated Sharpe + hierarchical Bayesian (BF₁₀ ≥ 10 and P(θ>0) ≥ 0.95). Stored in reports/agent/survival.jsonl as `survives_all_strict`.",
+    )
     if strict_recall is not None:
         cols[2].metric(
-            "Synthetic recall (strict)",
+            "Synthetic-benchmark recall (strict)",
             f"{strict_recall:.0%}",
             delta=(
                 f"DM-only: {dm_recall:.0%}"
                 if dm_recall is not None
                 else None
             ),
+            help="Fraction of deliberately-planted truth cells the apparatus recovers at the strict bar on a controlled synthetic universe. Lower than DM-only by design — the gates trade recall for FDR control.",
         )
     else:
-        cols[2].metric("Synthetic recall (strict)", "—")
+        cols[2].metric("Synthetic-benchmark recall (strict)", "—")
     if strict_fdr is not None:
-        cols[3].metric("Synthetic FDR (strict)", f"{strict_fdr:.0%}")
+        cols[3].metric(
+            "Synthetic-benchmark FDR (strict)",
+            f"{strict_fdr:.0%}",
+            help="Fraction of strict-bar promotions on the synthetic universe that are distractor cells (no planted signal). Should be near zero — that's the gates' contract.",
+        )
     else:
-        cols[3].metric("Synthetic FDR (strict)", "—")
+        cols[3].metric("Synthetic-benchmark FDR (strict)", "—")
 
+    # ---- Section 3: strict-bar verdict + finding card -------------------
     st.divider()
     cols = st.columns(2)
     with cols[0]:
-        st.subheader("Strict-bar verdict")
+        st.subheader("Strict-bar verdict on the promoted findings")
         if n_findings == 0:
-            st.info("No findings yet. Run `autosignalx agent run --mode lab`.")
+            st.info(
+                "No findings yet. Run `autosignalx agent run --mode lab` to "
+                "drive a fresh research session, then `autosignalx agent harden` "
+                "to grade everything through the methodology stack."
+            )
         elif n_strict == 0:
             st.warning(
                 f"**0 of {n_findings} promoted findings survive every gate.** "
-                "The hardening exposed exactly the fragility each finding has -- "
-                "the methodology is the artifact, not the count."
+                "The hardening exposed exactly the fragility each finding has — "
+                "for example, the bundled finding `f_9395cd1bd1be` (TLT, regime 3, "
+                "chronos2_multivariate) passes BH-FDR + full-test + placebo but "
+                "fails 50/50 block-holdout: the lift is concentrated in the "
+                "first half of the test window and does not corroborate in the "
+                "second half. This is the apparatus correctly grading its own "
+                "discovery, not a failure mode — the gates exist precisely to "
+                "expose this kind of fragility before any trade is placed."
             )
         else:
             st.success(
                 f"**{n_strict} of {n_findings} promoted findings survive every gate.** "
-                "These passed FDR + adversarial replication + Romano-Wolf + "
-                "Deflated Sharpe + hierarchical Bayesian (BF₁₀ ≥ 10)."
+                "These passed BH-FDR + adversarial replication + Combinatorial "
+                "Purged CV + Romano-Wolf + Deflated Sharpe + hierarchical "
+                "Bayesian (BF₁₀ ≥ 10 and P(θ>0) ≥ 0.95)."
             )
+        if survival_records:
+            shown_cols = ["finding_id", "method", "filters", "original_p",
+                          "fdr_q", "survives_block_holdout", "survives_rw",
+                          "survives_dsr", "survives_bayes", "survives_all_strict"]
+            sdf = pd.DataFrame(survival_records)
+            cols_present = [c for c in shown_cols if c in sdf.columns]
+            st.dataframe(sdf[cols_present], use_container_width=True, hide_index=True)
 
     with cols[1]:
-        st.subheader("Where compression should happen")
+        st.subheader("Layer-by-layer marginal contribution")
+        st.caption(
+            "Each variant adds one layer's worth of methods to the pool the "
+            "promotion pipeline can draw from. *Mean MAE* is computed on the "
+            "union of methods the variant has access to. *Marginal skill* is "
+            "the MAE drop vs the previous variant. *Cost* is the on-disk "
+            "size of the precomputed forecast parquets the variant consumes."
+        )
         if cap_path.exists():
             try:
                 cap = json.loads(cap_path.read_text(encoding="utf-8"))
@@ -2643,10 +2710,6 @@ def render_headline() -> None:
                         for r in rows
                     ])
                     st.dataframe(df, use_container_width=True, hide_index=True)
-                    st.caption(
-                        "Layer-drop ablation. Direct answer to Deeter Q2 "
-                        "(“smallest capability-preserving system”)."
-                    )
                 else:
                     st.info("Run `autosignalx eval ablate-capability`.")
             except Exception:  # noqa: BLE001
@@ -2654,35 +2717,67 @@ def render_headline() -> None:
         else:
             st.info("Run `autosignalx eval ablate-capability` to populate this card.")
 
+    # ---- Section 4: pipeline at a glance --------------------------------
     st.divider()
-    st.subheader("How to read this cockpit in 5 minutes")
+    st.subheader("Pipeline at a glance")
     st.markdown(
         """
-        1. **Survival Analysis** — see the strict bar's per-gate verdict on each
-           promoted finding. `survives_all_strict` is the conjunction of every
-           gate (FDR + adversarial + Romano-Wolf + Deflated Sharpe + Bayesian).
-        2. **Synthetic Benchmark** — same gates run on a controlled synthetic
-           universe with planted causal structure; per-gate recall + FDR.
-        3. **Capability Ablation** — drop each layer in turn; report marginal
-           MAE-skill vs cost-proxy bytes. The compression frontier.
-        4. **Specialist Council** — Phase 14 lab-mode multi-role consultation
-           feed + persistent KG memory (Deeter Q1).
-        5. **Reproducibility** — git + env + per-artifact SHA-256 + bundle hash
-           of the cockpit state you're seeing.
+        ```
+        yfinance OHLCV (data/cache/)            ── L1 walk-forward forecast harness ──> reports/ablations/*.parquet
+                                                         │
+                                                         ├── L2 contrastive encoder + KMeans + HMM ──> reports/regimes/*.parquet
+                                                         ├── L3 per-regime feature ranking + walk-forward stability ──> reports/signals/*.parquet
+                                                         └── L4 GLASSO + Granger + per-regime graphs ──> reports/graph/*.parquet
 
-        Full reading path: `TECHNICAL_SUMMARY.md` -> `REPORT.md` executive
-        summary -> the four cockpit panels above.
+                                                         ▼
+        L5 agent loop (single | debate | lab)   ── pre-registers each hypothesis ──> reports/agent/preregistrations.jsonl
+        Theorist → (lab) Verifier → Planner →   ── runs the experiment ──────────> reports/ablations/<agent-authored>.parquet
+        Specialist → Skeptic → experiment →     ── persists state ────────────────> reports/agent/{ledger,findings,kg,...}.jsonl
+        Adjudicator → KG-writer
+
+                                                         ▼
+        Hardening (autosignalx agent harden)    ── DM + bootstrap → BH-FDR → adversarial → CPCV → PBO → DSR → Romano-Wolf → Bayes
+                                                         ──> reports/agent/survival.jsonl (strict bar = conjunction)
+
+        Capability evals (eval-suite + synthetic + ablate-capability)
+                                                         ──> reports/agent/{calibration,red_team,coherence,synthetic_benchmark,capability_ablation}*
+        ```
         """
     )
 
+    # ---- Section 5: where to look next ----------------------------------
+    st.subheader("Where to look next")
+    st.markdown(
+        """
+        - **Survival Analysis** — per-finding pass/fail across every gate, with
+          full per-attack evidence cards.
+        - **Synthetic Benchmark** — the same gates run on a controlled universe
+          with deliberately planted causal structure; the recall/FDR pair is
+          the apparatus' own audited discriminative power.
+        - **Capability Ablation** — the table above with the full Pareto plot
+          of MAE vs cost-proxy across all variants.
+        - **Bayesian Evidence** — per-finding posterior mean / sd, P(θ>0), and
+          Bayes factor BF₁₀ from the Phase-12 hierarchical Normal-Normal model.
+        - **Specialist Council** — multi-role consultation feed (Statistician /
+          Quant / RiskOfficer / Economist / Implementer / RedTeam / Historian)
+          plus the persistent knowledge graph that survives across sessions.
+        - **Reproducibility** — git commit, library versions, replay-mode flag,
+          per-artifact SHA-256, and a single bundle hash for this cockpit state.
+        - **Forecast Arena, Backtest Arena, Custom Study** — the underlying
+          forecast cache, the simulated trading layer, and the per-study
+          workspace for running the apparatus on user-supplied data.
+        """
+    )
+
+    # ---- Section 6: reproducibility chip --------------------------------
     if badge_path.exists():
         try:
             badge = json.loads(badge_path.read_text(encoding="utf-8"))
             st.caption(
                 f"Reproducibility bundle hash: "
                 f"`{badge.get('artifacts_bundle_hash', '?')}` "
-                f"(git: `{(badge.get('git') or {}).get('commit', '?')}`, "
-                f"replay: {badge.get('replay_mode', False)})"
+                f"(git: `{(badge.get('git') or {}).get('commit', '?')[:12]}`, "
+                f"replay mode: {badge.get('replay_mode', False)})."
             )
         except Exception:  # noqa: BLE001
             pass
@@ -2756,33 +2851,39 @@ def render_synthetic_benchmark() -> None:
 
 
 def render_capability_ablation() -> None:
-    """Phase 16: smallest-capability-preserving ablation (Deeter Q2)."""
+    """Phase 16: layer-by-layer marginal-contribution ablation."""
     st.title("Capability Ablation")
     st.caption(
-        "For each layer, drop its contribution and re-grade. The marginal-skill "
-        "vs cost-proxy frontier directly answers \"where should compression happen?\""
+        "Layer-by-layer marginal contribution. Each variant adds one model "
+        "layer's worth of methods to the pool the promotion pipeline can "
+        "draw from; the table reports the resulting Mean MAE, the marginal "
+        "MAE drop vs the previous variant, and a cost proxy in bytes."
     )
 
     _panel_doc(
         inputs="`reports/agent/capability_ablation.json` produced by `autosignalx eval ablate-capability`.",
         operations=(
             "Concatenates the cached ablation parquets, slices by `method` column, "
-            "then constructs progressively richer variants (baseline_only -> +arima "
-            "-> +chronos_univ -> +multivariate -> +regime -> +graph -> full_stack). "
-            "Each variant's MAE is computed on the union of methods it has access to; "
-            "marginal-skill = previous-variant-MAE − this-variant-MAE."
+            "then constructs progressively richer variants (`baseline_only` -> "
+            "`+arima` -> `+chronos_univ` -> `+multivariate` -> `+regime` -> `+graph` -> "
+            "`full_stack`). Each variant's Mean MAE is computed on the union of "
+            "methods it has access to; *marginal skill* = previous-variant-MAE − "
+            "this-variant-MAE; *cost proxy* = total bytes of the bundled ablation "
+            "parquets the variant consumes (each parquet counted once even if it "
+            "carries multiple methods)."
         ),
         goal=(
-            "Identify which model layers carry actual marginal predictive skill "
-            "and which are compression / distillation candidates."
+            "Quantify each layer's marginal predictive contribution and the "
+            "byte cost of keeping it in the pipeline, so the resulting "
+            "capability-vs-cost frontier is explicit and auditable."
         ),
         interpretation=(
-            "Variants with high marginal-skill / low cost-proxy are load-bearing. "
-            "Variants with negative marginal-skill (this layer made MAE worse) are "
-            "trivial compression candidates -- they cost bytes without lifting the "
-            "headline metric. Holding the column #findings constant tells you whether "
-            "the regime / graph / agent layers are doing useful conditioning even "
-            "when raw MAE doesn't move."
+            "Variants with positive marginal-skill are load-bearing — that layer "
+            "moves the headline MAE. Variants with zero or negative marginal-skill "
+            "add cost without lifting the metric. The `n findings` column shows "
+            "whether the layer contributes through the conditional gate (regime / "
+            "graph / agent) even when raw MAE doesn't move: a finding can only "
+            "appear once enough layers are in scope to express its filter."
         ),
     )
 

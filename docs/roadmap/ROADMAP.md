@@ -1,35 +1,48 @@
-# Post-submission roadmap — AutoSignal-X
+# AutoSignal-X — phase roadmap and status
 
-**Audience.** Future-Claude (and the user) returning to this repo after the
-Deeter submission. This is a working reference, not a marketing doc.
+**Audience.** Anyone returning to this repository to understand which
+phases have shipped, which are open, and what each phase contributes.
+Working reference; not a marketing document.
 
-**Status.** Submission shipped on `main` at `dbfc118`. Phases 1-6 merged.
-Phases 7, 8, 12, 14, 15, 16 implemented in branch
-`claude/mystifying-wing-8bd66f` (covers research-lab-grade methodology +
-specialist agent + cockpit observability).
+**Status.**
 
-**Hard rules that survive into every phase:**
+| Phase | Theme | Status |
+|---|---|---|
+| 1 | Backtested simulation (engine, strategies, paired-bootstrap CI) | shipped |
+| 2 | User-defined custom studies (universe, dates, splits) | shipped |
+| 3 | Conversational explainability (grounded RAG over the run corpus) | shipped |
+| 4 | Demo and deployment (static snapshot + Streamlit Cloud) | shipped |
+| 5 | Statistical hardening (BH-FDR + adversarial replication) | shipped |
+| 6 | Structural enrichments (per-regime graph + walk-forward signal stability) | shipped |
+| 7 | Returns-target forecast contract (price / log_return / excess_return / vol / rank) | shipped |
+| 8 | Selection-bias-aware evaluation (CPCV + PBO + Deflated Sharpe + Romano-Wolf + pre-registration + holdout vault) | shipped |
+| 12 | Hierarchical Bayesian evidence (Normal-Normal posterior + Bayes factor + PPC) | shipped |
+| 14 | Specialist agent lab (11 roles, lab-mode LangGraph, persistent KG memory, EIG planner, verifier) | shipped |
+| 15 | Self-improving prompts + agent evals (calibration, RedTeam, coherence, prompt versioning, eval suite) | shipped |
+| 16 | Cockpit observability + capability evaluation (coverage map, statistical-power dashboard, counterfactual cards, reproducibility badge, synthetic benchmark, capability ablation) | shipped |
 
-1. **Walk-forward integrity.** Every parameter a model or strategy uses must
-   be frozen at or before the data window it acts on. Test boundaries:
-   `train ≤ 2018-12-31 < val ≤ 2020-12-31 < test ≤ 2025-12-31`. New code
-   that touches the eval pipeline must have a leakage test or extend an
-   existing one.
-2. **Reproducibility.** `make demo` from a fresh `uv sync` continues to work.
-   Replay mode (`AUTOSIGNALX_REPLAY=true`) continues to work without a
-   DeepInfra key.
-3. **Artifact contracts.** Layers communicate via typed parquet/JSONL on
-   disk. New layers add new artifacts; they do not retrofit existing ones.
-4. **One commit ships a working MVP.** Branches per concern, merged
-   `--no-ff` into the active integration branch.
+**Hard rules that hold across every phase:**
+
+1. **Walk-forward integrity.** Every parameter a model or strategy uses
+   must be frozen at or before the data window it acts on. Test
+   boundaries: `train ≤ 2018-12-31 < val ≤ 2020-12-31 < test ≤
+   2025-12-31`. New code that touches the eval pipeline must add or
+   extend a leakage test.
+2. **Reproducibility.** `make demo` from a fresh `uv sync` continues to
+   work; replay mode (`AUTOSIGNALX_REPLAY=true`) continues to work
+   without a DeepInfra key.
+3. **Artifact contracts.** Layers communicate exclusively through typed
+   parquet / JSONL on disk; no in-memory shared state. New layers add
+   new artifacts; they do not retrofit existing ones.
+4. **One commit ships a working MVP.** Per-concern branches, merged
+   `--no-ff` into `main`.
 
 ---
 
-## Phases 7-8-12-14-15-16 (research-lab grade)
+## Phases 7, 8, 12, 14, 15, 16 — research-grade methodology and observability
 
 These phases lift the project from "rigorous research instrument" to
-"research-lab-grade autonomous discovery engine". Implementation lives in
-branch `claude/mystifying-wing-8bd66f`.
+"autonomous discovery engine that audits its own discriminative power".
 
 ### Phase 7 — Returns-target forecast contract
 
@@ -475,10 +488,9 @@ Phases 1–3 land.
 the active phase + sub-iteration. Each phase's end consolidates lessons
 into the long-horizon `lessons.md` (existing infrastructure from Iter 16).
 
-**REPORT.md discipline.** REPORT currently describes the final state of
-the submission. As phases land, append new sections rather than rewriting
-the existing ones; the existing content is the historical baseline new
-work compares against.
+**REPORT.md discipline.** As phases land, append new sections rather than
+rewriting the existing ones; the existing content is the historical
+baseline new work compares against.
 
 **Branching convention.** `phaseN-<theme>` per sub-iteration, merged
 `--no-ff` into the integration branch (currently `main`). Once a phase is
