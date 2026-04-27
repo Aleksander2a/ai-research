@@ -1,12 +1,13 @@
 """AutoSignal-X — Streamlit research cockpit.
 
-31 panels in the sidebar (5 model layers + agent loop + Phase-1 backtest +
-Phase-2 custom studies + Phase-3 grounded chat + Phases 7/8/12/14/15/16
-research-lab observability). Each panel is a read-only viewer over a typed
-artifact written by one of the system's layers; expensive computation
-lives in CLI commands, the cockpit only visualises persisted state. Every
-panel includes a standardized 'About this panel' expander documenting its
-inputs, operations / algorithms, goal, and how to interpret the results."""
+34 panels in the sidebar grouped into seven sections (Headline, Data &
+Forecasts, Discovery (L2-L4), Strategy & Studies, Methodology, Agent
+activity, Reproducibility & memory). Each panel is a read-only viewer
+over a typed artifact written by one of the system's layers; expensive
+computation lives in CLI commands, the cockpit only visualises persisted
+state. Every panel includes a standardized 'About this panel' expander
+documenting its inputs, operations / algorithms, goal, and how to
+interpret the results."""
 
 from __future__ import annotations
 
@@ -141,7 +142,7 @@ def render_overview() -> None:
         ("Signal Stability", "Phase 6: walk-forward feature-importance rankings; per-(regime, feature) stability metrics; rank-trajectory chart across windows."),
         ("Backtest Arena", "Phase 1: simulated trading on the test window driven by discovered structure. Equity curves, drawdowns, Sharpe/Sortino/Calmar; paired bootstrap CI on Sharpe-difference vs benchmark; strict no-look-ahead."),
         ("Custom Study", "Phase 2: form-based per-study workspace (universe / dates / splits). Pre-flight validation + pipeline buttons. Each study has its own `data/studies/<name>/` and `reports/studies/<name>/` tree."),
-        ("Coverage Map", "Phase 14/16: 4D heatmap of (method × asset × regime) coloured by EIG (expected information gain). Reviewer sees exactly where the agent has hunted, what's promoted, what's open."),
+        ("Coverage Map", "Phase 14/16: 4D heatmap of (method × asset × regime) coloured by EIG (expected information gain). Shows exactly where the agent has hunted, what's promoted, what's open."),
         ("Statistical Power", "Phase 16: per-cell Cohen's d, observed power at α=0.05, sample-size required for 80% power. Distinguishes underpowered failures from genuine nulls."),
         ("Counterfactual Cards", "Phase 16: per-finding factor residualization (against macro factors), what-if perturbations across prediction-magnitude buckets, outlier-removal stability. Makes the *reasoning* behind each finding interrogable."),
         ("Bayesian Evidence", "Phase 12: hierarchical Normal-Normal posterior over each finding's true skill. Reports posterior mean / sd, P(θ>0), Bayes factor BF_10 vs the null, posterior predictive intervals."),
@@ -2745,27 +2746,46 @@ def render_headline() -> None:
         """
     )
 
-    # ---- Section 5: where to look next ----------------------------------
-    st.subheader("Where to look next")
+    # ---- Section 5: cockpit map ----------------------------------------
+    st.subheader("Cockpit map")
     st.markdown(
         """
-        - **Survival Analysis** — per-finding pass/fail across every gate, with
-          full per-attack evidence cards.
-        - **Synthetic Benchmark** — the same gates run on a controlled universe
-          with deliberately planted causal structure; the recall/FDR pair is
-          the apparatus' own audited discriminative power.
-        - **Capability Ablation** — the table above with the full Pareto plot
-          of MAE vs cost-proxy across all variants.
-        - **Bayesian Evidence** — per-finding posterior mean / sd, P(θ>0), and
-          Bayes factor BF₁₀ from the Phase-12 hierarchical Normal-Normal model.
-        - **Specialist Council** — multi-role consultation feed (Statistician /
-          Quant / RiskOfficer / Economist / Implementer / RedTeam / Historian)
-          plus the persistent knowledge graph that survives across sessions.
-        - **Reproducibility** — git commit, library versions, replay-mode flag,
-          per-artifact SHA-256, and a single bundle hash for this cockpit state.
-        - **Forecast Arena, Backtest Arena, Custom Study** — the underlying
-          forecast cache, the simulated trading layer, and the per-study
-          workspace for running the apparatus on user-supplied data.
+        The sidebar groups all 34 panels into seven sections. Each panel is a
+        read-only viewer over a typed parquet/JSONL artifact under `reports/`;
+        an *About this panel* expander on every page documents its inputs,
+        operations, goal, and how to interpret the result.
+
+        - **Data & Forecasts** — `Overview`, `Data` (cache inventory, ETF +
+          macro time series), `Forecast Arena` (per-method MAE / MAPE /
+          directional accuracy and per-(method, regime) stratification).
+        - **Discovery (L2-L4)** — `Regime Explorer` (KMeans + HMM regime
+          timelines), `Signal Discovery Lab` (per-regime feature importance),
+          `Cross-Asset Graph` (global GLASSO + Granger + centrality),
+          `Regime-Conditioned Graph` (per-regime variant + sensitivity),
+          `Signal Stability` (walk-forward feature-importance rankings).
+        - **Strategy & Studies** — `Backtest Arena` (simulated trading on the
+          test window with paired moving-block bootstrap), `Custom Study`
+          (per-study workspace for user-supplied universes / dates / splits).
+        - **Methodology** — `Survival Analysis` (per-finding pass/fail across
+          every gate), `Bayesian Evidence` (posterior + Bayes factor),
+          `Synthetic Benchmark` (audited per-gate recall / FDR on planted
+          structure), `Capability Ablation` (the table above with the full
+          MAE-vs-cost Pareto plot), `Coverage Map` (search-space heatmap by
+          Expected Information Gain), `Statistical Power` (per-cell Cohen's d
+          and required-n), `Counterfactual Cards` (factor residualization +
+          what-if + outlier removal), `Pre-Registration` (hash-committed
+          hypotheses), `Holdout Vault` (never-touched final test slice),
+          `RedTeam Attacks` (asset-shuffle + time-shift), `Agent Calibration`
+          (Brier + ECE), `Agent Coherence` (per-session lessons-uptake +
+          lineage branching + theme entropy).
+        - **Agent activity** — `Agent Console` (chat-style ledger timeline +
+          trace-quality chart), `Specialist Council` (lab-mode multi-role
+          consultations + persistent KG explorer), `Auto-Play Replay`,
+          `Findings`, `Lineage`, `Self-Critique`, `Lessons & Memory`,
+          `Telemetry`, `Sessions`.
+        - **Reproducibility & memory** — `Reproducibility` (git + env +
+          per-artifact SHA-256 + a single bundle hash), `Ask the Memory`
+          (cite-or-refuse RAG chat over the entire run corpus).
         """
     )
 
@@ -2979,7 +2999,7 @@ PANEL_SECTIONS = [
         ("Telemetry", render_telemetry),
         ("Sessions", render_sessions),
     ]),
-    ("Reviewer", [
+    ("Reproducibility & memory", [
         ("Reproducibility", render_reproducibility_panel),
         ("Ask the Memory", render_ask_the_memory),
     ]),
@@ -2993,7 +3013,7 @@ PANELS = {name: fn for _, panels in PANEL_SECTIONS for name, fn in panels}
 section_names = [s[0] for s in PANEL_SECTIONS]
 section_name = st.sidebar.radio(
     "Section", section_names, index=0,
-    help="Sidebar groups -- start at Headline, walk down to Reviewer.",
+    help="Seven sidebar groups covering all 34 panels. Start at Headline.",
 )
 panels_in_section = next(p for s, p in PANEL_SECTIONS if s == section_name)
 panel_name = st.sidebar.radio(

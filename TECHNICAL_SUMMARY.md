@@ -142,7 +142,7 @@ not a marketing claim.
 | `src/autosignalx/agent/lab.py` | The specialist research-lab orchestration. |
 | `src/autosignalx/agent/knowledge_graph.py` | Persistent KG memory across sessions. |
 | `src/autosignalx/agent/calibration.py` | Brier + ECE for the Theorist's predicted confidence. |
-| `app/streamlit_app.py` | 31 cockpit panels; every one is a read-only viewer over `reports/`. |
+| `app/streamlit_app.py` | 34 cockpit panels in 7 sidebar sections; every one is a read-only viewer over `reports/`. |
 
 ## Reproducibility
 
